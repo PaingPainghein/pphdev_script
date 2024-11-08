@@ -7,4 +7,4 @@ apt-get update -y; apt-get upgrade -y; wget https://raw.githubusercontent.com/sa
 ```
 
 ## 🔗: link
-https://sansoe2022.github.io/sks_script/
+https://paingpainghein.github.io/pphdev_script/
