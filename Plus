@@ -66,18 +66,18 @@ otimize_python() {
     update-alternatives --set python3 /usr/bin/python3.6
 }
 echo -e "\033[1;31m════════════════════════════════════════════════════\033[0m"
-tput setaf 7 ; tput setab 4 ; tput bold ; printf '%40s%s%-12s\n' " San Soe AUTO SCRIPT       " ; tput sgr0
+tput setaf 7 ; tput setab 4 ; tput bold ; printf '%40s%s%-12s\n' " Paing Paing Hein AUTO SCRIPT       " ; tput sgr0
 echo -e "\033[1;31m════════════════════════════════════════════════════\033[0m"
 echo ""
 echo -e "             \033[1;31mAttention! \033[1;33mPlease read first !\033[0m"
 echo ""
 echo -e "\033[1;31m• \033[1;33mInstall the script as a VPN server tool\033[0m"
-echo -e "\033[1;33m  Use a dark theme for clear highlighting, by San Soe\033[0m"
+echo -e "\033[1;33m  Use a dark theme for clear highlighting, by Paing Paing Hein\033[0m"
 echo ""
 echo -e "\033[1;32m• \033[1; Warning! \033[1;33mThis script was developed for personal use by the member\033[0m"
 echo -e "\033[1;33m  And We don't allow anyone to resell or defraud others people!\033[0m"
 echo ""
-echo -e "\033[1;31m≠×≠×≠×≠×≠×≠×≠×[\033[1;33m • \033[1;32mEDIT:@San Soe\033[1;33m •\033[1;31m ]≠×≠×≠×≠×≠×≠×≠×\033[0m"
+echo -e "\033[1;31m≠×≠×≠×≠×≠×≠×≠×[\033[1;33m • \033[1;32mEDIT:@Paing Paing Hein\033[1;33m •\033[1;31m ]≠×≠×≠×≠×≠×≠×≠×\033[0m"
 echo ""
 #-----------------------------------------------------------------------------------------------------------------
 read -p "$(echo -e "\033[1;36mDo you want to continue \033[1;31m? \033[1;33m[S/N]:\033[1;37m ")" -e -i s resp
@@ -164,6 +164,6 @@ cd $HOME
 echo -e "        \033[1;33m • \033[1;32mInstallation complete...\033[1;33m • \033[0m"
 echo ""
 echo -e "\033[1;31m \033[1;33mTo continue enter menu : \033[1;32mmenu\033[0m"
-echo -e "\033[1;33m For more information, contact the admin San Soe \033[1;31m(\033[1;36mTelegram\033[1;31m): \033[1;37m@pphdev\033[0m"
+echo -e "\033[1;33m For more information, contact the admin Paing Paing Hein \033[1;31m(\033[1;36mTelegram\033[1;31m): \033[1;37m@pphdev\033[0m"
 rm $HOME/Plus && cat /dev/null > ~/.bash_history && history -c
 
