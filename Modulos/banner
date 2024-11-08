@@ -1,6 +1,6 @@
 clear
 
-wget https://raw.githubusercontent.com/sansoe2022/pphdev_script/main/DNS/autodns
+wget https://raw.githubusercontent.com/PaingPainghein/pphdev_script/main/DNS/autodns
 
 chmod +x autodns
 
