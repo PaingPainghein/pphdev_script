@@ -1,6 +1,6 @@
 #!/bin/bash
 #===================================================
-#   SCRIPT: BOT SSHPLUS MANAGER
+#   SCRIPT: BOT Paing Paing Hein
 #   DATA ATT: 24 de Jan 2021
 #   DESENVOLVIDO POR: CRAZY_VPN
 #   API SHELLBOT: SHAMAN
@@ -891,7 +891,7 @@ backup_users() {
 sobremim() {
     local msg
     msg="=×=×=×=×=×=×=×=×=×=×=×=×=×=\n"
-    msg+="<b>🤖 BOT SSHPLUS MANAGER 🤖</b>\n"
+    msg+="<b>🤖 BOT Paing Paing Hein 🤖</b>\n"
     msg+="=×=×=×=×=×=×=×=×=×=×=×=×=×=\n\n"
     msg+="<b>Desenvolvido por:</b> @crazy_vpn\n"
     msg+="<b>Canal Oficial:</b> @SSHPLUS\n\n"
