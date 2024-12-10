@@ -4,8 +4,8 @@
 #   DATA ATT: 24 de Jan 2021
 #   DESENVOLVIDO POR: CRAZY_VPN
 #   API SHELLBOT: SHAMAN
-#   CONTATO TELEGRAM: http://t.me/crazy_vpn
-#   CANAL TELEGRAM: http://t.me/sshplus
+#   CONTATO TELEGRAM: http://t.me/pphdev
+#   CANAL TELEGRAM: http://t.me/pphdev
 #===================================================
 [[ ! -d /etc/SSHPlus ]] && exit 0
 [[ ! -d /etc/bot ]] && exit 0
