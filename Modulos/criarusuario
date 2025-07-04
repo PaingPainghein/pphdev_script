@@ -82,7 +82,7 @@ fun_youip() {
     echo ""
     echo -e "\033[1;33mCurrent Server URL: \033[1;32mhttp://$youip/pphdev/tokens\033[0m"
     echo ""
-    echo -ne "\033[1;32mEnter new server IP:port (e.g., 192.168.1.1:8989): \033[1;37m "
+    echo -ne "\033[1;32mEnter new server IP:port (e.g., 192.168.1.1:89): \033[1;37m "
     read -r input_youip
     if [[ -z "$input_youip" ]]; then
         echo -e "\n\033[1;31mError: Server IP:port cannot be empty!\033[0m"
@@ -93,7 +93,7 @@ fun_youip() {
         return
     fi
     if [[ ! "$input_youip" =~ ^[0-9.]+:[0-9]+$ ]]; then
-        echo -e "\n\033[1;31mError: Invalid IP:port format! Use format like 192.168.1.1:8989\033[0m"
+        echo -e "\n\033[1;31mError: Invalid IP:port format! Use format like 192.168.1.1:89\033[0m"
         echo ""
         echo -e "\033[1;33mPress ENTER to try again!\033[0m"
         read -r
@@ -118,8 +118,8 @@ prompt_for_youip() {
         printf '%30s%s%-15s\n' "Set Initial Server IP"
         tput sgr0
         echo ""
-        echo -e "\033[1;31mNo server IP set! Please provide a new IP:port.\033[0m"
-        echo -ne "\033[1;32mEnter server IP:port (e.g., 192.168.1.1:8989): \033[1;37m "
+        echo -e "\033[1;31mNo server IP set! Please provide a new IP:port (e.g., 192.168.1.1:89).\033[0m"
+        echo -ne "\033[1;32mEnter server IP:port: \033[1;37m "
         read -r input_youip
         if [[ -z "$input_youip" ]]; then
             echo -e "\n\033[1;31mError: Server IP:port cannot be empty!\033[0m"
@@ -129,7 +129,7 @@ prompt_for_youip() {
             return
         fi
         if [[ ! "$input_youip" =~ ^[0-9.]+:[0-9]+$ ]]; then
-            echo -e "\n\033[1;31mError: Invalid IP:port format! Use format like 192.168.1.1:8989\033[0m"
+            echo -e "\n\033[1;31mError: Invalid IP:port format! Use format like 192.168.1.1:89\033[0m"
             echo -e "\033[1;33mPress ENTER to try again!\033[0m"
             read -r
             prompt_for_youip
@@ -188,7 +188,7 @@ fun_geraovpn() {
     rmt3='www.vivo.com.br 8088'
     prx='200.142.130.104'
     payload1='#payload "HTTP/1.0 [crlf]Host: m.youtube.com[crlf]CONNECT HTTP/1.0[crlf][crlf]|[crlf]"'
-    payload2='#payload "CONNECT 127.0.0.1:1194[split][crl  HTTP/1.0 [crlf][crlf]#"'
+    payload2='#payload "CONNECT 127.0.0.1:1194[split][crlf] HTTP/1.0 [crlf][crlf]#"'
     vivo1="portalrecarga.vivo.com.br/recarga"
     vivo2="portalrecarga.vivo.com.br/controle/"
     vivo3="navegue.vivo.com.br/pre/"
@@ -233,7 +233,6 @@ fun_bar() {
     tput civis
     echo -ne "\033[1;33mPLEASE WAIT \033[1;37m- \033[1;33m["
     while true; do
-
         for ((i = 0; i < 18; i++)); do
             echo -ne "\033[1;31m#"
             sleep 0.1s
@@ -519,7 +518,7 @@ fun_usertoken() {
     read -r
 }
 
-# Function to rename token
+# Function to rename SSH token
 fun_rename_token() {
     clear
     tput setaf 7
@@ -581,7 +580,7 @@ fun_rename_token() {
     read -r
 }
 
-# Function to delete token
+# Function to delete SSH token
 fun_delete_token() {
     clear
     tput setaf 7
