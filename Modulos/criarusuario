@@ -1,35 +1,41 @@
 #!/bin/bash
 #============================================================
-# Script: criarusuario.sh
+# Script: criarusuario
 # Description: Manages SSH accounts and OpenVPN configurations
 # Author: @pphdev
 #============================================================
 
 # Read IP from /etc/IP
-IP=$(cat /etc/IP)
+IP=$(cat /etc/IP 2>/dev/null)
+[[ -z "$IP" ]] && {
+    echo -e "\033[1;31mError: /etc/IP not found or empty!\033[0m"
+    exit 1
+}
 cor1='\033[41;1;37m'
 cor2='\033[44;1;37m'
 scor='\033[0m'
 
 # Function to generate client.ovpn
 newclient() {
-    cp /etc/openvpn/client-common.txt ~/$1.ovpn
-    echo "<ca>" >>~/$1.ovpn
-    cat /etc/openvpn/easy-rsa/pki/ca.crt >>~/$1.ovpn
-    echo "</ca>" >>~/$1.ovpn
-    echo "<cert>" >>~/$1.ovpn
-    cat /etc/openvpn/easy-rsa/pki/issued/$1.crt >>~/$1.ovpn
-    echo "</cert>" >>~/$1.ovpn
-    echo "<key>" >>~/$1.ovpn
-    cat /etc/openvpn/easy-rsa/pki/private/$1.key >>~/$1.ovpn
-    echo "</key>" >>~/$1.ovpn
-    echo "<tls-auth>" >>~/$1.ovpn
-    cat /etc/openvpn/ta.key >>~/$1.ovpn
-    echo "</tls-auth>" >>~/$1.ovpn
+    local username="$1"
+    cp /etc/openvpn/client-common.txt ~/$username.ovpn
+    echo "<ca>" >>~/$username.ovpn
+    cat /etc/openvpn/easy-rsa/pki/ca.crt >>~/$username.ovpn
+    echo "</ca>" >>~/$username.ovpn
+    echo "<cert>" >>~/$username.ovpn
+    cat /etc/openvpn/easy-rsa/pki/issued/$username.crt >>~/$username.ovpn
+    echo "</cert>" >>~/$username.ovpn
+    echo "<key>" >>~/$username.ovpn
+    cat /etc/openvpn/easy-rsa/pki/private/$username.key >>~/$username.ovpn
+    echo "</key>" >>~/$username.ovpn
+    echo "<tls-auth>" >>~/$username.ovpn
+    cat /etc/openvpn/ta.key >>~/$username.ovpn
+    echo "</tls-auth>" >>~/$username.ovpn
 }
 
 # Function to generate OVPN file
 fun_geraovpn() {
+    local username="$1"
     [[ "$respost" = @(s|S) ]] && {
         cd /etc/openvpn/easy-rsa/
         ./easyrsa build-client-full "$username" nopass
@@ -146,7 +152,7 @@ fun_edithost() {
         }
         fun_bar 'fun_althost'
         echo -e "\n\033[1;32mHOST CHANGED SUCCESSFULLY!\033[0m"
-        fun_geraovpn
+        fun_geraovpn "$username"
         sleep 1.5
     elif [[ "$respo" = '2' ]]; then
         echo -e "\n\033[1;32mCHANGING HOST!\033[0m\n"
@@ -157,7 +163,7 @@ fun_edithost() {
         }
         fun_bar 'fun_althost2'
         echo -e "\n\033[1;32mHOST CHANGED SUCCESSFULLY!\033[0m"
-        fun_geraovpn
+        fun_geraovpn "$username"
         sleep 1.5
     elif [[ "$respo" = '3' ]]; then
         echo -e "\n\033[1;32mCHANGING HOST!\033[0m\n"
@@ -168,7 +174,7 @@ fun_edithost() {
         }
         fun_bar 'fun_althostpay1'
         echo -e "\n\033[1;32mHOST CHANGED SUCCESSFULLY!\033[0m"
-        fun_geraovpn
+        fun_geraovpn "$username"
         sleep 1.5
     elif [[ "$respo" = '4' ]]; then
         echo -e "\n\033[1;32mCHANGING HOST!\033[0m\n"
@@ -179,7 +185,7 @@ fun_edithost() {
         }
         fun_bar 'fun_althostpay2'
         echo -e "\n\033[1;32mHOST CHANGED SUCCESSFULLY!\033[0m"
-        fun_geraovpn
+        fun_geraovpn "$username"
         sleep 1.5
     elif [[ "$respo" = '5' ]]; then
         echo -e "\n\033[1;32mCHANGING HOST!\033[0m\n"
@@ -190,7 +196,7 @@ fun_edithost() {
         }
         fun_bar 'fun_althost5'
         echo -e "\n\033[1;32mHOST CHANGED SUCCESSFULLY!\033[0m"
-        fun_geraovpn
+        fun_geraovpn "$username"
         sleep 1.5
     elif [[ "$respo" = '6' ]]; then
         echo -e "\n\033[1;32mCHANGING HOST!\033[0m\n"
@@ -201,10 +207,10 @@ fun_edithost() {
         }
         fun_bar 'fun_althost6'
         echo -e "\n\033[1;32mHOST CHANGED SUCCESSFULLY!\033[0m"
-        fun_geraovpn
+        fun_geraovpn "$username"
         sleep 1.5
     elif [[ "$respo" = '7' ]]; then
-        [[ ! -e "$HOME/$username.ovpn" ]] && fun_geraovpn
+        [[ ! -e "$HOME/$username.ovpn" ]] && fun_geraovpn "$username"
         echo -e "\n\033[1;32mCHANGING HOST!\033[0m\n"
         fun_packhost() {
             [[ ! -d "$HOME/OVPN" ]] && mkdir $HOME/OVPN
@@ -249,7 +255,7 @@ fun_edithost() {
         nano /etc/openvpn/client-common.txt
         echo ""
         echo -e "\033[1;32mEDITED SUCCESSFULLY!\033[0m"
-        fun_geraovpn
+        fun_geraovpn "$username"
         sleep 1.5
     elif [[ "$respo" = '0' ]]; then
         echo ""
@@ -261,6 +267,9 @@ fun_edithost() {
         sleep 2
         fun_edithost
     fi
+    echo ""
+    echo -e "\033[1;33mPress ENTER to return to MENU!\033[0m"
+    read -r
 }
 
 # Function to create SSH token
@@ -329,13 +338,21 @@ fun_usertoken() {
         sleep 2
         return
     }
-    password=$(cat /etc/SSHPlus/Token.txt)
+    echo -ne "\033[1;32mInclude password in OVPN? [y/n]: \033[1;37m "
+    read respost
+    password=$(cat /etc/SSHPlus/Token.txt 2>/dev/null)
+    [[ -z "$password" ]] && {
+        echo -e "\n${cor1}Error: /etc/SSHPlus/Token.txt not found or empty!${scor}\n"
+        sleep 2
+        return
+    }
     final=$(date "+%Y-%m-%d" -d "+$dias days")
     gui=$(date "+%d/%m/%Y" -d "+$dias days")
     pass=$(perl -e 'print crypt($ARGV[0], "password")' $password)
-    useradd -e $final -M -s /bin/false -p $pass $username >/dev/null 2>&1 &
+    useradd -e $final -M -s /bin/false -p $pass $username >/dev/null 2>&1
     echo "$password" >/etc/SSHPlus/senha/$username
     echo "$username $sshlimiter" >>/root/usuarios.db
+    fun_geraovpn "$username"
     # Send token to server
     curl -X POST "http://your-custom-server.com/pphdev/tokens" -d "{\"Name\":\"$username\",\"Key\":\"$username\",\"Valid\":\"$dias\",\"Expiration\":\"$final\"}" >/dev/null 2>&1
     if [[ $? -eq 0 ]]; then
@@ -349,6 +366,9 @@ fun_usertoken() {
     echo -e "\033[1;32mToken: \033[1;37m$username"
     echo -e "\033[1;32mExpires on: \033[1;37m$gui"
     echo -e "\033[1;32mConnection limit: \033[1;37m$sshlimiter"
+    echo ""
+    echo -e "\033[1;33mPress ENTER to return to MENU!\033[0m"
+    read -r
 }
 
 # Function to rename token
@@ -395,7 +415,7 @@ fun_rename_token() {
     mv /etc/SSHPlus/senha/$old_username /etc/SSHPlus/senha/$new_username
     rm -f /root/$old_username.ovpn /root/$old_username.zip
     username=$new_username
-    fun_geraovpn
+    fun_geraovpn "$username"
     # Update server
     curl -X PUT "http://your-custom-server.com/pphdev/tokens/$old_username" -d "{\"Name\":\"$new_username\",\"Key\":\"$new_username\"}" >/dev/null 2>&1
     if [[ $? -eq 0 ]]; then
@@ -403,7 +423,9 @@ fun_rename_token() {
     else
         echo -e "\n\033[1;31mFailed to sync renamed token with server!\033[0m"
     fi
-    sleep 2
+    echo ""
+    echo -e "\033[1;33mPress ENTER to return to MENU!\033[0m"
+    read -r
 }
 
 # Function to delete token
@@ -446,7 +468,9 @@ fun_delete_token() {
     else
         echo -e "\n\033[1;31mFailed to delete token from server!\033[0m"
     fi
-    sleep 2
+    echo ""
+    echo -e "\033[1;33mPress ENTER to return to MENU!\033[0m"
+    read -r
 }
 
 # Main menu
@@ -479,6 +503,18 @@ fun_main_menu() {
 # Check if required directory exists
 [[ ! -e /usr/lib/sshplus ]] && {
     echo -e "\n${cor1}Required directory /usr/lib/sshplus not found!${scor}\n"
+    exit 1
+}
+[[ ! -e /etc/SSHPlus/Token.txt ]] && {
+    echo -e "\n${cor1}Required file /etc/SSHPlus/Token.txt not found!${scor}\n"
+    exit 1
+}
+[[ ! -e /etc/openvpn/server.conf ]] && {
+    echo -e "\n${cor1}Required file /etc/openvpn/server.conf not found!${scor}\n"
+    exit 1
+}
+[[ ! -e /etc/openvpn/client-common.txt ]] && {
+    echo -e "\n${cor1}Required file /etc/openvpn/client-common.txt not found!${scor}\n"
     exit 1
 }
 
