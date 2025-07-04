@@ -71,6 +71,45 @@ cor1='\033[41;1;37m'
 cor2='\033[44;1;37m'
 scor='\033[0m'
 
+# Function to set server IP
+fun_youip() {
+    clear
+    tput setaf 7
+    tput setab 4
+    tput bold
+    printf '%30s%s%-15s\n' "Set Server IP"
+    tput sgr0
+    echo ""
+    echo -e "\033[1;33mCurrent Server URL: \033[1;32mhttp://$youip/pphdev/tokens\033[0m"
+    echo ""
+    echo -ne "\033[1;32mEnter new server IP:port (e.g., 192.168.1.1:8989): \033[1;37m "
+    read -r input_youip
+    if [[ -z "$input_youip" ]]; then
+        echo -e "\n\033[1;31mError: Server IP:port cannot be empty!\033[0m"
+        echo -e "\033[1;33mKeeping current server URL: http://$youip/pphdev/tokens\033[0m"
+        echo ""
+        echo -e "\033[1;33mPress ENTER to return to MENU!\033[0m"
+        read -r
+        return
+    fi
+    # Validate IP:port format (basic check)
+    if [[ ! "$input_youip" =~ ^[0-9.]+:[0-9]+$ ]]; then
+        echo -e "\n\033[1;31mError: Invalid IP:port format! Use format like 192.168.1.1:8989\033[0m"
+        echo ""
+        echo -e "\033[1;33mPress ENTER to try again!\033[0m"
+        read -r
+        fun_youip
+        return
+    fi
+    youip="$input_youip"
+    # Update server URL in the script
+    sudo sed -i "s|http://[^/]*\(/pphdev/tokens\)|http://$youip\1|" /usr/bin/criarusuario
+    echo -e "\n\033[1;32mServer IP updated to http://$youip/pphdev/tokens!\033[0m"
+    echo ""
+    echo -e "\033[1;33mPress ENTER to return to MENU!\033[0m"
+    read -r
+}
+
 # Function to generate client.ovpn
 newclient() {
     local username="$1"
@@ -417,7 +456,7 @@ fun_usertoken() {
     echo "$username $sshlimiter" >>/root/usuarios.db
     fun_geraovpn "$username"
     # Send token to server
-    curl -X POST "http://your-custom-server.com:8989/pphdev/tokens" -d "{\"Name\":\"$display_name\",\"Key\":\"$username\",\"Valid\":\"$dias\",\"Expiration\":\"$final\"}" >/dev/null 2>&1
+    curl -X POST "http://$youip/pphdev/tokens" -d "{\"Name\":\"$display_name\",\"Key\":\"$username\",\"Valid\":\"$dias\",\"Expiration\":\"$final\"}" >/dev/null 2>&1
     if [[ $? -eq 0 ]]; then
         echo -e "\n\033[1;32mToken created and synced with server!\033[0m"
     else
@@ -488,7 +527,7 @@ fun_rename_token() {
     username=$new_username
     fun_geraovpn "$username"
     # Update server
-    curl -X PUT "http://your-custom-server.com:8989/pphdev/tokens/$old_username" -d "{\"Name\":\"$new_display_name\",\"Key\":\"$new_username\"}" >/dev/null 2>&1
+    curl -X PUT "http://$youip/pphdev/tokens/$old_username" -d "{\"Name\":\"$new_display_name\",\"Key\":\"$new_username\"}" >/dev/null 2>&1
     if [[ $? -eq 0 ]]; then
         echo -e "\n\033[1;32mToken renamed to $new_username (Name: $new_display_name) and synced with server!\033[0m"
     else
@@ -528,7 +567,7 @@ fun_delete_token() {
         return
     }
     # Delete from server
-    curl -X DELETE "http://your-custom-server.com:8989/pphdev/tokens/$username" >/dev/null 2>&1
+    curl -X DELETE "http://$youip/pphdev/tokens/$username" >/dev/null 2>&1
     if [[ $? -eq 0 ]]; then
         # Delete local files
         userdel -r $username >/dev/null 2>&1
@@ -557,6 +596,7 @@ fun_main_menu() {
     echo -e "\033[1;31m[\033[1;36m2\033[1;31m] \033[1;33mRename Token"
     echo -e "\033[1;31m[\033[1;36m3\033[1;31m] \033[1;33mDelete Token"
     echo -e "\033[1;31m[\033[1;36m4\033[1;31m] \033[1;33mChange Host"
+    echo -e "\033[1;31m[\033[1;36m5\033[1;31m] \033[1;33mYou-server Token ADD"
     echo -e "\033[1;31m[\033[1;36m0\033[1;31m] \033[1;33mExit"
     echo ""
     echo -ne "\033[1;32mWhat do you want to do? \033[1;37m "
@@ -566,6 +606,7 @@ fun_main_menu() {
         2) fun_rename_token ;;
         3) fun_delete_token ;;
         4) fun_edithost ;;
+        5) fun_youip ;;
         0) exit 0 ;;
         *) echo -e "\n\033[1;31mInvalid option!\033[0m"; sleep 2; fun_main_menu ;;
     esac
@@ -573,6 +614,14 @@ fun_main_menu() {
 
 # Initialize requirements
 init_requirements
+
+# Set default server IP if not already set
+if [[ -z "$youip" ]]; then
+    youip=$(grep -oP 'http://\K[^/]+(?=/pphdev/tokens)' /usr/bin/criarusuario | head -1)
+    if [[ -z "$youip" ]]; then
+        youip="212.80.212.82:8989"
+    fi
+}
 
 # Start the main menu
 fun_main_menu
