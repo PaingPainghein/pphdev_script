@@ -86,4 +86,4 @@ def get_tokens():
     return jsonify([{'id': t[0], 'Name': t[1], 'Key': t[2], 'Valid': t[3], 'Expiration': t[4]} for t in tokens])
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=89)
+    app.run(host='0.0.0.0', port=5000)
