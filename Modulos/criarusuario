@@ -1,16 +1,72 @@
 #!/bin/bash
 #============================================================
 # Script: criarusuario
-# Description: Manages SSH accounts and OpenVPN configurations
+# Description: Manages SSH accounts and OpenVPN configurations for PPHDEV
 # Author: @pphdev
 #============================================================
 
+# Initialize required files and directories
+init_requirements() {
+    [[ ! -e /etc/IP ]] && {
+        echo -e "\033[1;31mError: /etc/IP not found! Creating with default IP.\033[0m"
+        echo "127.0.0.1" | sudo tee /etc/IP >/dev/null
+    }
+    [[ ! -e /etc/SSHPlus/Token.txt ]] && {
+        echo -e "\033[1;31mError: /etc/SSHPlus/Token.txt not found! Creating with default password.\033[0m"
+        sudo mkdir -p /etc/SSHPlus/senha
+        echo "default_password" | sudo tee /etc/SSHPlus/Token.txt >/dev/null
+    }
+    [[ ! -e /usr/lib/sshplus ]] && {
+        echo -e "\033[1;31mError: /usr/lib/sshplus not found! Creating directory.\033[0m"
+        sudo mkdir -p /usr/lib/sshplus
+    }
+    [[ ! -e /etc/openvpn/server.conf ]] && {
+        echo -e "\033[1;31mError: /etc/openvpn/server.conf not found! Creating default configuration.\033[0m"
+        sudo mkdir -p /etc/openvpn
+        cat <<EOL | sudo tee /etc/openvpn/server.conf >/dev/null
+port 1194
+proto udp
+dev tun
+ca /etc/openvpn/easy-rsa/pki/ca.crt
+cert /etc/openvpn/easy-rsa/pki/issued/server.crt
+key /etc/openvpn/easy-rsa/pki/private/server.key
+dh /etc/openvpn/easy-rsa/pki/dh2048.pem
+server 10.8.0.0 255.255.255.0
+push "redirect-gateway def1"
+push "dhcp-option DNS 8.8.8.8"
+keepalive 10 120
+tls-auth /etc/openvpn/ta.key 0
+cipher AES-256-CBC
+persist-key
+persist-tun
+status openvpn-status.log
+verb 3
+EOL
+        echo -e "\033[1;33mWarning: Default /etc/openvpn/server.conf created. Configure Easy-RSA and certificates manually!\033[0m"
+    }
+    [[ ! -e /etc/openvpn/client-common.txt ]] && {
+        echo -e "\033[1;31mError: /etc/openvpn/client-common.txt not found! Creating default configuration.\033[0m"
+        cat <<EOL | sudo tee /etc/openvpn/client-common.txt >/dev/null
+client
+dev tun
+proto udp
+remote /SSHPLUS? 1194
+resolv-retry infinite
+nobind
+persist-key
+persist-tun
+http-proxy-option CUSTOM-HEADER Host portalrecarga.vivo.com.br/recarga
+http-proxy 200.142.130.104 80
+EOL
+    }
+    [[ ! -e /root/usuarios.db ]] && {
+        echo -e "\033[1;31mError: /root/usuarios.db not found! Creating empty file.\033[0m"
+        sudo touch /root/usuarios.db
+    }
+}
+
 # Read IP from /etc/IP
 IP=$(cat /etc/IP 2>/dev/null)
-[[ -z "$IP" ]] && {
-    echo -e "\033[1;31mError: /etc/IP not found or empty!\033[0m"
-    exit 1
-}
 cor1='\033[41;1;37m'
 cor2='\033[44;1;37m'
 scor='\033[0m'
@@ -20,16 +76,16 @@ newclient() {
     local username="$1"
     cp /etc/openvpn/client-common.txt ~/$username.ovpn
     echo "<ca>" >>~/$username.ovpn
-    cat /etc/openvpn/easy-rsa/pki/ca.crt >>~/$username.ovpn
+    cat /etc/openvpn/easy-rsa/pki/ca.crt >>~/$username.ovpn 2>/dev/null || echo -e "\033[1;31mWarning: ca.crt not found!\033[0m"
     echo "</ca>" >>~/$username.ovpn
     echo "<cert>" >>~/$username.ovpn
-    cat /etc/openvpn/easy-rsa/pki/issued/$username.crt >>~/$username.ovpn
+    cat /etc/openvpn/easy-rsa/pki/issued/$username.crt >>~/$username.ovpn 2>/dev/null || echo -e "\033[1;31mWarning: $username.crt not found!\033[0m"
     echo "</cert>" >>~/$username.ovpn
     echo "<key>" >>~/$username.ovpn
-    cat /etc/openvpn/easy-rsa/pki/private/$username.key >>~/$username.ovpn
+    cat /etc/openvpn/easy-rsa/pki/private/$username.key >>~/$username.ovpn 2>/dev/null || echo -e "\033[1;31mWarning: $username.key not found!\033[0m"
     echo "</key>" >>~/$username.ovpn
     echo "<tls-auth>" >>~/$username.ovpn
-    cat /etc/openvpn/ta.key >>~/$username.ovpn
+    cat /etc/openvpn/ta.key >>~/$username.ovpn 2>/dev/null || echo -e "\033[1;31mWarning: ta.key not found!\033[0m"
     echo "</tls-auth>" >>~/$username.ovpn
 }
 
@@ -37,13 +93,13 @@ newclient() {
 fun_geraovpn() {
     local username="$1"
     [[ "$respost" = @(s|S) ]] && {
-        cd /etc/openvpn/easy-rsa/
-        ./easyrsa build-client-full "$username" nopass
+        cd /etc/openvpn/easy-rsa/ 2>/dev/null || echo -e "\033[1;31mError: Easy-RSA directory not found!\033[0m"
+        ./easyrsa build-client-full "$username" nopass 2>/dev/null || echo -e "\033[1;31mWarning: Easy-RSA failed to generate client cert!\033[0m"
         newclient "$username"
         sed -e "s;auth-user-pass;<auth-user-pass>\n$username\n$password\n</auth-user-pass>;g" /root/$username.ovpn >/root/tmp.ovpn && mv -f /root/tmp.ovpn /root/$username.ovpn
     } || {
-        cd /etc/openvpn/easy-rsa/
-        ./easyrsa build-client-full "$username" nopass
+        cd /etc/openvpn/easy-rsa/ 2>/dev/null || echo -e "\033[1;31mError: Easy-RSA directory not found!\033[0m"
+        ./easyrsa build-client-full "$username" nopass 2>/dev/null || echo -e "\033[1;31mWarning: Easy-RSA failed to generate client cert!\033[0m"
         newclient "$username"
     }
 } >/dev/null 2>&1
@@ -278,7 +334,7 @@ fun_usertoken() {
     tput setaf 7
     tput setab 4
     tput bold
-    printf '%30s%s%-15s\n' "Create SSH Token"
+    printf '%30s%s%-15s\n' "Create PPHDEV Token"
     tput sgr0
     echo ""
     echo -ne "\033[1;32mEnter Token Name: \033[1;37m "
@@ -301,6 +357,13 @@ fun_usertoken() {
     sizemin=$(echo ${#username})
     [[ $sizemin -lt 2 ]] && {
         echo -e "\n${cor1}Token name too short! Use at least 2 characters!${scor}\n"
+        sleep 2
+        return
+    }
+    echo -ne "\033[1;32mEnter Display Name: \033[1;37m "
+    read display_name
+    [[ -z $display_name ]] && {
+        echo -e "\n${cor1}Display name cannot be empty!${scor}\n"
         sleep 2
         return
     }
@@ -342,7 +405,7 @@ fun_usertoken() {
     read respost
     password=$(cat /etc/SSHPlus/Token.txt 2>/dev/null)
     [[ -z "$password" ]] && {
-        echo -e "\n${cor1}Error: /etc/SSHPlus/Token.txt not found or empty!${scor}\n"
+        echo -e "\n${cor1}Error: /etc/SSHPlus/Token.txt empty or not found!${scor}\n"
         sleep 2
         return
     }
@@ -354,15 +417,16 @@ fun_usertoken() {
     echo "$username $sshlimiter" >>/root/usuarios.db
     fun_geraovpn "$username"
     # Send token to server
-    curl -X POST "http://your-custom-server.com/pphdev/tokens" -d "{\"Name\":\"$username\",\"Key\":\"$username\",\"Valid\":\"$dias\",\"Expiration\":\"$final\"}" >/dev/null 2>&1
+    curl -X POST "http://your-custom-server.com:8989/pphdev/tokens" -d "{\"Name\":\"$display_name\",\"Key\":\"$username\",\"Valid\":\"$dias\",\"Expiration\":\"$final\"}" >/dev/null 2>&1
     if [[ $? -eq 0 ]]; then
         echo -e "\n\033[1;32mToken created and synced with server!\033[0m"
     else
         echo -e "\n\033[1;31mFailed to sync token with server!\033[0m"
     fi
     clear
-    echo -e "\E[44;1;37m       SSH ACCOUNT CREATED!      \E[0m"
+    echo -e "\E[44;1;37m       PPHDEV ACCOUNT CREATED!      \E[0m"
     echo -e "\n\033[1;32mIP: \033[1;37m$IP"
+    echo -e "\033[1;32mName: \033[1;37m$display_name"
     echo -e "\033[1;32mToken: \033[1;37m$username"
     echo -e "\033[1;32mExpires on: \033[1;37m$gui"
     echo -e "\033[1;32mConnection limit: \033[1;37m$sshlimiter"
@@ -377,7 +441,7 @@ fun_rename_token() {
     tput setaf 7
     tput setab 4
     tput bold
-    printf '%30s%s%-15s\n' "Rename SSH Token"
+    printf '%30s%s%-15s\n' "Rename PPHDEV Token"
     tput sgr0
     echo ""
     echo -ne "\033[1;32mCurrent Token Name: \033[1;37m "
@@ -409,6 +473,13 @@ fun_rename_token() {
         sleep 2
         return
     }
+    echo -ne "\033[1;32mNew Display Name: \033[1;37m "
+    read new_display_name
+    [[ -z $new_display_name ]] && {
+        echo -e "\n${cor1}New display name cannot be empty!${scor}\n"
+        sleep 2
+        return
+    }
     # Update local files
     sed -i "s/^$old_username:/$new_username:/" /etc/passwd
     sed -i "s/^$old_username /$new_username /" /root/usuarios.db
@@ -417,9 +488,9 @@ fun_rename_token() {
     username=$new_username
     fun_geraovpn "$username"
     # Update server
-    curl -X PUT "http://your-custom-server.com/pphdev/tokens/$old_username" -d "{\"Name\":\"$new_username\",\"Key\":\"$new_username\"}" >/dev/null 2>&1
+    curl -X PUT "http://your-custom-server.com:8989/pphdev/tokens/$old_username" -d "{\"Name\":\"$new_display_name\",\"Key\":\"$new_username\"}" >/dev/null 2>&1
     if [[ $? -eq 0 ]]; then
-        echo -e "\n\033[1;32mToken renamed to $new_username and synced with server!\033[0m"
+        echo -e "\n\033[1;32mToken renamed to $new_username (Name: $new_display_name) and synced with server!\033[0m"
     else
         echo -e "\n\033[1;31mFailed to sync renamed token with server!\033[0m"
     fi
@@ -434,7 +505,7 @@ fun_delete_token() {
     tput setaf 7
     tput setab 4
     tput bold
-    printf '%30s%s%-15s\n' "Delete SSH Token"
+    printf '%30s%s%-15s\n' "Delete PPHDEV Token"
     tput sgr0
     echo ""
     echo -ne "\033[1;32mToken Name to Delete: \033[1;37m "
@@ -457,7 +528,7 @@ fun_delete_token() {
         return
     }
     # Delete from server
-    curl -X DELETE "http://your-custom-server.com/pphdev/tokens/$username" >/dev/null 2>&1
+    curl -X DELETE "http://your-custom-server.com:8989/pphdev/tokens/$username" >/dev/null 2>&1
     if [[ $? -eq 0 ]]; then
         # Delete local files
         userdel -r $username >/dev/null 2>&1
@@ -479,7 +550,7 @@ fun_main_menu() {
     tput setaf 7
     tput setab 4
     tput bold
-    printf '%30s%s%-15s\n' "SSH Account Management"
+    printf '%30s%s%-15s\n' "PPHDEV Account Management"
     tput sgr0
     echo ""
     echo -e "\033[1;31m[\033[1;36m1\033[1;31m] \033[1;33mCreate Token"
@@ -500,23 +571,8 @@ fun_main_menu() {
     esac
 }
 
-# Check if required directory exists
-[[ ! -e /usr/lib/sshplus ]] && {
-    echo -e "\n${cor1}Required directory /usr/lib/sshplus not found!${scor}\n"
-    exit 1
-}
-[[ ! -e /etc/SSHPlus/Token.txt ]] && {
-    echo -e "\n${cor1}Required file /etc/SSHPlus/Token.txt not found!${scor}\n"
-    exit 1
-}
-[[ ! -e /etc/openvpn/server.conf ]] && {
-    echo -e "\n${cor1}Required file /etc/openvpn/server.conf not found!${scor}\n"
-    exit 1
-}
-[[ ! -e /etc/openvpn/client-common.txt ]] && {
-    echo -e "\n${cor1}Required file /etc/openvpn/client-common.txt not found!${scor}\n"
-    exit 1
-}
+# Initialize requirements
+init_requirements
 
 # Start the main menu
-fun_main_menu
+fun_main_menuလ
