@@ -55,6 +55,18 @@ persist-tun
 http-proxy-option CUSTOM-HEADER Host portalrecarga.vivo.com.br/recarga
 http-proxy $IP 80
 EOL
+
+    # Initialize Easy-RSA if not already set up
+    if [[ ! -d /etc/openvpn/easy-rsa ]]; then
+        sudo mkdir -p /etc/openvpn/easy-rsa
+        sudo cp -r /usr/share/easy-rsa/* /etc/openvpn/easy-rsa/
+        cd /etc/openvpn/easy-rsa
+        sudo ./easyrsa init-pki >/dev/null 2>&1
+        sudo ./easyrsa build-ca nopass >/dev/null 2>&1
+        sudo ./easyrsa gen-dh >/dev/null 2>&1
+        sudo ./easyrsa build-server-full server nopass >/dev/null 2>&1
+        sudo openvpn --genkey --secret /etc/openvpn/ta.key >/dev/null 2>&1
+    fi
 }
 
 # Generate client.ovpn file
@@ -185,9 +197,11 @@ fun_youip_token_add() {
     echo "$password" >/etc/SSHPlus/senha/$username
     echo "$username $sshlimiter" >>/root/usuarios.db
     
-    fun_geraovpn "$username"
+    fun_bar "fun_geraovpn \"$username\""
     
-    curl -X POST "$SERVER_URL" -H "Content-Type: application/json" -d "{\"Name\":\"$display_name\",\"Key\":\"$username\",\"Valid\":\"$dias\",\"Expiration\":\"$final\"}" >/dev/null 2>&1
+    # Replace youip in SERVER_URL with actual IP
+    local server_url=$(echo "$SERVER_URL" | sed "s/youip/$IP/")
+    curl -X POST "$server_url" -H "Content-Type: application/json" -d "{\"Name\":\"$display_name\",\"Key\":\"$username\",\"Valid\":\"$dias\",\"Expiration\":\"$final\"}" >/dev/null 2>&1
     if [[ $? -eq 0 ]]; then
         echo -e "\n\033[1;32mToken created and synced with server!\033[0m"
     else
@@ -234,9 +248,11 @@ fun_rename_token() {
     sed -i "s/^$old_username /$new_username /" /root/usuarios.db
     mv /etc/SSHPlus/senha/$old_username /etc/SSHPlus/senha/$new_username
     rm -f /root/$old_username.ovpn /root/$old_username.zip
-    fun_geraovpn "$new_username"
+    username="$new_username"
+    fun_bar "fun_geraovpn \"$username\""
     
-    curl -X PUT "$SERVER_URL/$old_username" -H "Content-Type: application/json" -d "{\"Name\":\"$new_display_name\",\"Key\":\"$new_username\"}" >/dev/null 2>&1
+    local server_url=$(echo "$SERVER_URL" | sed "s/youip/$IP/")
+    curl -X PUT "$server_url/$old_username" -H "Content-Type: application/json" -d "{\"Name\":\"$new_display_name\",\"Key\":\"$new_username\"}" >/dev/null 2>&1
     if [[ $? -eq 0 ]]; then
         echo -e "\n\033[1;32mToken renamed to $new_username (Name: $new_display_name) and synced with server!\033[0m"
     else
@@ -265,7 +281,8 @@ fun_delete_token() {
     read confirm
     [[ ! "$confirm" =~ ^[yY]$ ]] && { echo -e "\n\033[1;31mDeletion cancelled!${scor}\n"; sleep 2; return; }
     
-    curl -X DELETE "$SERVER_URL/$username" >/dev/null 2>&1
+    local server_url=$(echo "$SERVER_URL" | sed "s/youip/$IP/")
+    curl -X DELETE "$server_url/$username" >/dev/null 2>&1
     if [[ $? -eq 0 ]]; then
         userdel -r "$username" >/dev/null 2>&1
         sed -i "/^$username /d" /root/usuarios.db
@@ -346,7 +363,7 @@ fun_edithost() {
             echo -e "\n\033[1;32mCHANGING HOST!\033[0m\n"
             fun_althost5() {
                 sed -i "7,9d" $cert01
-                sed -i "7i\remote www.vivo.com.br 8088\nhttp-proxy-option CUSTOM-HEADER Host navegue.vivo.com.br/pre/\nhttp-proxy 200.142.130.104:80" $cert01
+                sed -i "7i\remote www.vivo.com.br 8088\nhttp-proxy-option CUSTOM-HEADER Host navegue.vivo.com.br/pre/\nhttp-proxy 200.142.130.104 80" $cert01
             }
             fun_bar 'fun_althost5'
             echo -e "\n\033[1;32mHOST CHANGED SUCCESSFULLY!\033[0m"
@@ -434,7 +451,7 @@ fun_main_menu() {
     echo -ne "\033[1;32mWhat do you want to do? \033[1;37m "
     read option
     case $option in
-        1) fun_usertoken ;;
+        1) fun_youip_token_add ;;
         2) fun_rename_token ;;
         3) fun_delete_token ;;
         4) configure_hosts; fun_edithost ;;
