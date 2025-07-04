@@ -14,7 +14,7 @@ init_requirements() {
     [[ ! -e /etc/SSHPlus/Token.txt ]] && {
         echo -e "\033[1;31mError: /etc/SSHPlus/Token.txt not found! Creating with default password.\033[0m"
         sudo mkdir -p /etc/SSHPlus/senha
-        echo "default_password" | sudo tee /etc/SSHPlus/Token.txt >/dev/null
+        echo "PPHDEV" | sudo tee /etc/SSHPlus/Token.txt >/dev/null
     }
     [[ ! -e /usr/lib/sshplus ]] && {
         echo -e "\033[1;31mError: /usr/lib/sshplus not found! Creating directory.\033[0m"
@@ -63,6 +63,10 @@ EOL
         echo -e "\033[1;31mError: /root/usuarios.db not found! Creating empty file.\033[0m"
         sudo touch /root/usuarios.db
     }
+    [[ ! -e /root/database.db ]] && {
+        echo -e "\033[1;31mError: /root/database.db not found! Creating empty SQLite database.\033[0m"
+        sudo sqlite3 /root/database.db "CREATE TABLE tokens (id INTEGER PRIMARY KEY AUTOINCREMENT, Name TEXT, Key TEXT UNIQUE, Valid INTEGER, Expiration TEXT);"
+    }
 }
 
 # Read IP from /etc/IP
@@ -80,20 +84,20 @@ fun_youip() {
     printf '%30s%s%-15s\n' "Set Server IP"
     tput sgr0
     echo ""
-    echo -e "\033[1;33mCurrent Server URL: \033[1;32mhttp://$youip/pphdev/tokens\033[0m"
+    echo -e "\033[1;33mCurrent Server URL: \033[1;32mhttp://$youip:5000/pphdev/tokens\033[0m"
     echo ""
-    echo -ne "\033[1;32mEnter new server IP:port (e.g., 192.168.1.1:89): \033[1;37m "
+    echo -ne "\033[1;32mEnter new server IP:port (e.g., 192.168.1.100:5000): \033[1;37m "
     read -r input_youip
     if [[ -z "$input_youip" ]]; then
         echo -e "\n\033[1;31mError: Server IP:port cannot be empty!\033[0m"
-        echo -e "\033[1;33mKeeping current server URL: http://$youip/pphdev/tokens\033[0m"
+        echo -e "\033[1;33mKeeping current server URL: http://$youip:5000/pphdev/tokens\033[0m"
         echo ""
         echo -e "\033[1;33mPress ENTER to return to MENU!\033[0m"
         read -r
         return
     fi
     if [[ ! "$input_youip" =~ ^[0-9.]+:[0-9]+$ ]]; then
-        echo -e "\n\033[1;31mError: Invalid IP:port format! Use format like 192.168.1.1:89\033[0m"
+        echo -e "\n\033[1;31mError: Invalid IP:port format! Use format like 192.168.1.100:5000\033[0m"
         echo ""
         echo -e "\033[1;33mPress ENTER to try again!\033[0m"
         read -r
@@ -101,8 +105,8 @@ fun_youip() {
         return
     fi
     youip="$input_youip"
-    sudo sed -i "s|http://[^/]*\(/pphdev/tokens\)|http://$youip\1|" /usr/bin/criarusuario
-    echo -e "\n\033[1;32mServer IP updated to http://$youip/pphdev/tokens!\033[0m"
+    sudo sed -i "s|http://[^/]*\(:5000/pphdev/tokens\)|http://$youip\1|" /usr/bin/criarusuario
+    echo -e "\n\033[1;32mServer IP updated to http://$youip:5000/pphdev/tokens!\033[0m"
     echo ""
     echo -e "\033[1;33mPress ENTER to return to MENU!\033[0m"
     read -r
@@ -118,7 +122,7 @@ prompt_for_youip() {
         printf '%30s%s%-15s\n' "Set Initial Server IP"
         tput sgr0
         echo ""
-        echo -e "\033[1;31mNo server IP set! Please provide a new IP:port (e.g., 192.168.1.1:89).\033[0m"
+        echo -e "\033[1;31mNo server IP set! Please provide a new IP:port (e.g., 192.168.1.100:5000).\033[0m"
         echo -ne "\033[1;32mEnter server IP:port: \033[1;37m "
         read -r input_youip
         if [[ -z "$input_youip" ]]; then
@@ -129,15 +133,15 @@ prompt_for_youip() {
             return
         fi
         if [[ ! "$input_youip" =~ ^[0-9.]+:[0-9]+$ ]]; then
-            echo -e "\n\033[1;31mError: Invalid IP:port format! Use format like 192.168.1.1:89\033[0m"
+            echo -e "\n\033[1;31mError: Invalid IP:port format! Use format like 192.168.1.100:5000\033[0m"
             echo -e "\033[1;33mPress ENTER to try again!\033[0m"
             read -r
             prompt_for_youip
             return
         fi
         youip="$input_youip"
-        sudo sed -i "s|http://[^/]*\(/pphdev/tokens\)|http://$youip\1|" /usr/bin/criarusuario
-        echo -e "\n\033[1;32mServer IP set to http://$youip/pphdev/tokens!\033[0m"
+        sudo sed -i "s|http://[^/]*\(:5000/pphdev/tokens\)|http://$youip\1|" /usr/bin/criarusuario
+        echo -e "\n\033[1;32mServer IP set to http://$youip:5000/pphdev/tokens!\033[0m"
         echo ""
         echo -e "\033[1;33mPress ENTER to continue!\033[0m"
         read -r
@@ -354,9 +358,9 @@ fun_edithost() {
                 sleep 0.5
                 sed -i "7i\remote $rmt2 $_Port\nhttp-proxy-option CUSTOM-HEADER Host $vivo1\nhttp-proxy $IP 80" $HOME/$username.ovpn
                 cp $HOME/$username.ovpn /root/OVPN/$username-vivo1.ovpn
-                sed -i "8d" $HOME/$username.ovpn
+                sed -i "7,9d" $HOME/$username.ovpn
                 sleep 0.5
-                sed -i "8i\http-proxy-option CUSTOM-HEADER Host $vivo3" $HOME/$username.ovpn
+                sed -i "7i\remote $rmt2 $_Port\nhttp-proxy-option CUSTOM-HEADER Host $vivo3\nhttp-proxy $IP 80" $HOME/$username.ovpn
                 cp $HOME/$username.ovpn /root/OVPN/$username-vivo2.ovpn
                 sed -i "7,9d" $HOME/$username.ovpn
                 sleep 0.5
@@ -500,7 +504,7 @@ fun_usertoken() {
     echo "$password" >/etc/SSHPlus/senha/$username
     echo "$username $sshlimiter" >>/root/usuarios.db
     fun_geraovpn "$username"
-    curl -X POST "http://$youip/pphdev/tokens" -d "{\"Name\":\"$display_name\",\"Key\":\"$username\",\"Valid\":\"$dias\",\"Expiration\":\"$final\"}" >/dev/null 2>&1
+    curl -X POST "http://$youip:5000/pphdev/tokens" -H "Content-Type: application/json" -d "{\"Name\":\"$display_name\",\"Key\":\"$username\",\"Valid\":\"$dias\",\"Expiration\":\"$final\"}" >/dev/null 2>&1
     if [[ $? -eq 0 ]]; then
         echo -e "\n\033[1;32mToken created and synced with server!\033[0m"
     else
@@ -514,7 +518,7 @@ fun_usertoken() {
     echo -e "\033[1;32mExpires on: \033[1;37m$gui"
     echo -e "\033[1;32mConnection limit: \033[1;37m$sshlimiter"
     echo ""
-    echo -e "\033[1;33mPress ENTER to return to MENU!\033[0m"
+    echo -e "\033[1;33mPress artistico Press ENTER to return to MENU!\033[0m"
     read -r
 }
 
@@ -569,7 +573,7 @@ fun_rename_token() {
     rm -f /root/$old_username.ovpn /root/$old_username.zip
     username=$new_username
     fun_geraovpn "$username"
-    curl -X PUT "http://$youip/pphdev/tokens/$old_username" -d "{\"Name\":\"$new_display_name\",\"Key\":\"$new_username\"}" >/dev/null 2>&1
+    curl -X PUT "http://$youip:5000/pphdev/tokens/$old_username" -H "Content-Type: application/json" -d "{\"Name\":\"$new_display_name\",\"Key\":\"$new_username\"}" >/dev/null 2>&1
     if [[ $? -eq 0 ]]; then
         echo -e "\n\033[1;32mToken renamed to $new_username (Name: $new_display_name) and synced with server!\033[0m"
     else
@@ -608,7 +612,7 @@ fun_delete_token() {
         sleep 2
         return
     }
-    curl -X DELETE "http://$youip/pphdev/tokens/$username" >/dev/null 2>&1
+    curl -X DELETE "http://$youip:5000/pphdev/tokens/$username" >/dev/null 2>&1
     if [[ $? -eq 0 ]]; then
         userdel -r $username >/dev/null 2>&1
         sed -i "/^$username /d" /root/usuarios.db
@@ -656,7 +660,7 @@ fun_main_menu() {
 init_requirements
 
 # Prompt for server IP if not already set
-youip=$(grep -oP 'http://\K[^/]+(?=/pphdev/tokens)' /usr/bin/criarusuario | head -1)
+youip=$(grep -oP 'http://\K[^/]+(?=:5000/pphdev/tokens)' /usr/bin/criarusuario | head -1)
 prompt_for_youip
 
 # Start the main menu
