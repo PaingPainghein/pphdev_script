@@ -15,7 +15,7 @@ if (isset($_GET['token'])) {
         die('La conexión SSH falló.');
     }
 
-    $auth = ssh2_auth_password($conexion, $username, 'DEXVPN'); // Ingresa la contraseña
+    $auth = ssh2_auth_password($conexion, $username, 'PPHDEV'); // Ingresa la contraseña
     if (!$auth) {
         echo 'Fail'; // Si la autenticación falla
     } else {
@@ -24,4 +24,3 @@ if (isset($_GET['token'])) {
 } else {
     echo 'No hay nada que ver aquí.'; // Mensaje si no se proporciona el parámetro 'token'
 }
-?>
