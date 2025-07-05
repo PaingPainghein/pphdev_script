@@ -6,12 +6,25 @@
 #============================================================
 
 # Constants
-SERVER_URL="http://youip:89/pphdev/tokens"
-IP=$(curl -s http://checkip.amazonaws.com) # Dynamically get server IP
 PORT="1194"
 cor1='\033[41;1;37m'
 cor2='\033[44;1;37m'
 scor='\033[0m'
+
+# Get server IP dynamically
+IP=$(curl -s http://checkip.amazonaws.com || hostname -I | awk '{print $1}')
+[[ -z "$IP" ]] && { echo -e "${cor1}Error: Unable to determine server IP!${scor}"; exit 1; }
+SERVER_URL="http://$IP:8080/pphdev/tokens"
+
+# Update .bashrc with correct IP
+update_bashrc() {
+    if grep -q "export PPHDEV_SERVER_IP=" /root/.bashrc; then
+        sudo sed -i "s/export PPHDEV_SERVER_IP=.*/export PPHDEV_SERVER_IP=$IP/" /root/.bashrc
+    else
+        echo "export PPHDEV_SERVER_IP=$IP" | sudo tee -a /root/.bashrc >/dev/null
+    fi
+    source /root/.bashrc
+}
 
 # Initialize required files and directories
 init_requirements() {
@@ -56,10 +69,10 @@ http-proxy-option CUSTOM-HEADER Host portalrecarga.vivo.com.br/recarga
 http-proxy $IP 80
 EOL
 
-    # Initialize Easy-RSA if not already set up
+    # Initialize Easy-RSA
     if [[ ! -d /etc/openvpn/easy-rsa ]]; then
         sudo mkdir -p /etc/openvpn/easy-rsa
-        sudo cp -r /usr/share/easy-rsa/* /etc/openvpn/easy-rsa/
+        sudo cp -r /usr/share/easy-rsa/* /etc/openvpn/easy-rsa/ 2>/dev/null || { echo -e "${cor1}Error: Easy-RSA not found in /usr/share/easy-rsa!${scor}"; exit 1; }
         cd /etc/openvpn/easy-rsa
         sudo ./easyrsa init-pki >/dev/null 2>&1
         sudo ./easyrsa build-ca nopass >/dev/null 2>&1
@@ -75,16 +88,16 @@ newclient() {
     cp /etc/openvpn/client-common.txt ~/$username.ovpn
     {
         echo "<ca>"
-        cat /etc/openvpn/easy-rsa/pki/ca.crt
+        cat /etc/openvpn/easy-rsa/pki/ca.crt 2>/dev/null || echo -e "${cor1}Warning: ca.crt not found!${scor}"
         echo "</ca>"
         echo "<cert>"
-        cat /etc/openvpn/easy-rsa/pki/issued/$username.crt
+        cat /etc/openvpn/easy-rsa/pki/issued/$username.crt 2>/dev/null || echo -e "${cor1}Warning: $username.crt not found!${scor}"
         echo "</cert>"
         echo "<key>"
-        cat /etc/openvpn/easy-rsa/pki/private/$username.key
+        cat /etc/openvpn/easy-rsa/pki/private/$username.key 2>/dev/null || echo -e "${cor1}Warning: $username.key not found!${scor}"
         echo "</key>"
         echo "<tls-auth>"
-        cat /etc/openvpn/ta.key
+        cat /etc/openvpn/ta.key 2>/dev/null || echo -e "${cor1}Warning: ta.key not found!${scor}"
         echo "</tls-auth>"
     } >>~/$username.ovpn
 }
@@ -97,6 +110,7 @@ fun_geraovpn() {
     newclient "$username"
     if [[ "$respost" =~ ^[sS]$ ]]; then
         password=$(cat /etc/SSHPlus/Token.txt)
+        [[ -z "$password" ]] && { echo -e "${cor1}Error: Token password not found!${scor}"; exit 1; }
         sed -e "s;auth-user-pass;<auth-user-pass>\n$username\n$password\n</auth-user-pass>;g" /root/$username.ovpn >/root/tmp.ovpn && mv -f /root/tmp.ovpn /root/$username.ovpn
     fi
 }
@@ -159,7 +173,7 @@ fun_youip_token_add() {
     tput setaf 7
     tput setab 4
     tput bold
-    printf '%30s%s%-15s\n' "Add PPHDEV Token"
+    printf '%30s%s%-15s\n' "You-server Token ADD"
     tput sgr0
     echo ""
     echo -ne "\033[1;32mEnter Token Name: \033[1;37m "
@@ -199,9 +213,7 @@ fun_youip_token_add() {
     
     fun_bar "fun_geraovpn \"$username\""
     
-    # Replace youip in SERVER_URL with actual IP
-    local server_url=$(echo "$SERVER_URL" | sed "s/youip/$IP/")
-    curl -X POST "$server_url" -H "Content-Type: application/json" -d "{\"Name\":\"$display_name\",\"Key\":\"$username\",\"Valid\":\"$dias\",\"Expiration\":\"$final\"}" >/dev/null 2>&1
+    curl -X POST "$SERVER_URL" -H "Content-Type: application/json" -d "{\"Name\":\"$display_name\",\"Key\":\"$username\",\"Valid\":\"$dias\",\"Expiration\":\"$final\"}" >/dev/null 2>&1
     if [[ $? -eq 0 ]]; then
         echo -e "\n\033[1;32mToken created and synced with server!\033[0m"
     else
@@ -251,8 +263,7 @@ fun_rename_token() {
     username="$new_username"
     fun_bar "fun_geraovpn \"$username\""
     
-    local server_url=$(echo "$SERVER_URL" | sed "s/youip/$IP/")
-    curl -X PUT "$server_url/$old_username" -H "Content-Type: application/json" -d "{\"Name\":\"$new_display_name\",\"Key\":\"$new_username\"}" >/dev/null 2>&1
+    curl -X PUT "$SERVER_URL/$old_username" -H "Content-Type: application/json" -d "{\"Name\":\"$new_display_name\",\"Key\":\"$new_username\"}" >/dev/null 2>&1
     if [[ $? -eq 0 ]]; then
         echo -e "\n\033[1;32mToken renamed to $new_username (Name: $new_display_name) and synced with server!\033[0m"
     else
@@ -281,8 +292,7 @@ fun_delete_token() {
     read confirm
     [[ ! "$confirm" =~ ^[yY]$ ]] && { echo -e "\n\033[1;31mDeletion cancelled!${scor}\n"; sleep 2; return; }
     
-    local server_url=$(echo "$SERVER_URL" | sed "s/youip/$IP/")
-    curl -X DELETE "$server_url/$username" >/dev/null 2>&1
+    curl -X DELETE "$SERVER_URL/$username" >/dev/null 2>&1
     if [[ $? -eq 0 ]]; then
         userdel -r "$username" >/dev/null 2>&1
         sed -i "/^$username /d" /root/usuarios.db
@@ -314,6 +324,11 @@ fun_edithost() {
     echo -e "\033[1;31m[\033[1;36m8\033[1;31m] \033[1;33mEDIT MANUALLY"
     echo -e "\033[1;31m[\033[1;36m0\033[1;31m] \033[1;33mRETURN"
     echo ""
+    echo -ne "\033[1;32mEnter Token Name for OVPN: \033[1;37m "
+    read username
+    [[ -z "$username" ]] && { echo -e "\n${cor1}Token name cannot be empty!${scor}\n"; sleep 2; fun_edithost; return; }
+    [[ "$(grep -wc "$username" /etc/passwd)" == "0" ]] && { echo -e "\n${cor1}Token does not exist!${scor}\n"; sleep 2; fun_edithost; return; }
+    
     echo -ne "\033[1;32mWHICH HOST TO USE? \033[1;37m "
     read respo
     [[ -z "$respo" ]] && { echo -e "\n\033[1;31mInvalid option!${scor}\n"; sleep 2; fun_edithost; return; }
@@ -462,6 +477,7 @@ fun_main_menu() {
 }
 
 # Initialize and run
+update_bashrc
 init_requirements
 configure_hosts
 fun_main_menu
