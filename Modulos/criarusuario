@@ -5,38 +5,26 @@
 # Author: @pphdev
 #============================================================
 
-# Constants
-PORT="1194"
-cor1='\033[41;1;37m'
-cor2='\033[44;1;37m'
-scor='\033[0m'
-
-# Get server IP dynamically
-IP=$(curl -s http://checkip.amazonaws.com || hostname -I | awk '{print $1}')
-[[ -z "$IP" ]] && { echo -e "${cor1}Error: Unable to determine server IP!${scor}"; exit 1; }
-SERVER_URL="http://$IP:8080/pphdev/tokens"
-
-# Update .bashrc with correct IP
-update_bashrc() {
-    if grep -q "export PPHDEV_SERVER_IP=" /root/.bashrc; then
-        sudo sed -i "s/export PPHDEV_SERVER_IP=.*/export PPHDEV_SERVER_IP=$IP/" /root/.bashrc
-    else
-        echo "export PPHDEV_SERVER_IP=$IP" | sudo tee -a /root/.bashrc >/dev/null
-    fi
-    source /root/.bashrc
-}
-
 # Initialize required files and directories
 init_requirements() {
-    sudo mkdir -p /etc/SSHPlus/senha /usr/lib/sshplus /etc/openvpn /root/OVPN
-    echo "$IP" | sudo tee /etc/IP >/dev/null
-    echo "PPHDEV" | sudo tee /etc/SSHPlus/Token.txt >/dev/null
-    sudo touch /root/usuarios.db
-    sudo sqlite3 /root/database.db "CREATE TABLE IF NOT EXISTS tokens (id INTEGER PRIMARY KEY AUTOINCREMENT, Name TEXT, Key TEXT UNIQUE, Valid INTEGER, Expiration TEXT);" 2>/dev/null
-
-    # OpenVPN server configuration
-    cat <<EOL | sudo tee /etc/openvpn/server.conf >/dev/null
-port $PORT
+    [[ ! -e /etc/IP ]] && {
+        echo -e "\033[1;31mError: /etc/IP not found! Creating with default IP.\033[0m"
+        echo "127.0.0.1" | sudo tee /etc/IP >/dev/null
+    }
+    [[ ! -e /etc/SSHPlus/Token.txt ]] && {
+        echo -e "\033[1;31mError: /etc/SSHPlus/Token.txt not found! Creating with default password.\033[0m"
+        sudo mkdir -p /etc/SSHPlus/senha
+        echo "PPHDEV" | sudo tee /etc/SSHPlus/Token.txt >/dev/null
+    }
+    [[ ! -e /usr/lib/sshplus ]] && {
+        echo -e "\033[1;31mError: /usr/lib/sshplus not found! Creating directory.\033[0m"
+        sudo mkdir -p /usr/lib/sshplus
+    }
+    [[ ! -e /etc/openvpn/server.conf ]] && {
+        echo -e "\033[1;31mError: /etc/openvpn/server.conf not found! Creating default configuration.\033[0m"
+        sudo mkdir -p /etc/openvpn
+        cat <<EOL | sudo tee /etc/openvpn/server.conf >/dev/null
+port 1194
 proto udp
 dev tun
 ca /etc/openvpn/easy-rsa/pki/ca.crt
@@ -54,260 +42,145 @@ persist-tun
 status openvpn-status.log
 verb 3
 EOL
-
-    # OpenVPN client configuration
-    cat <<EOL | sudo tee /etc/openvpn/client-common.txt >/dev/null
+        echo -e "\033[1;33mWarning: Default /etc/openvpn/server.conf created. Configure Easy-RSA and certificates manually!\033[0m"
+    }
+    [[ ! -e /etc/openvpn/client-common.txt ]] && {
+        echo -e "\033[1;31mError: /etc/openvpn/client-common.txt not found! Creating default configuration.\033[0m"
+        cat <<EOL | sudo tee /etc/openvpn/client-common.txt >/dev/null
 client
 dev tun
 proto udp
-remote $IP $PORT
+remote /SSHPLUS? 1194
 resolv-retry infinite
 nobind
 persist-key
 persist-tun
 http-proxy-option CUSTOM-HEADER Host portalrecarga.vivo.com.br/recarga
-http-proxy $IP 80
+http-proxy 200.142.130.104 80
 EOL
-
-    # Initialize Easy-RSA
-    if [[ ! -d /etc/openvpn/easy-rsa ]]; then
-        sudo mkdir -p /etc/openvpn/easy-rsa
-        sudo cp -r /usr/share/easy-rsa/* /etc/openvpn/easy-rsa/ 2>/dev/null || { echo -e "${cor1}Error: Easy-RSA not found in /usr/share/easy-rsa!${scor}"; exit 1; }
-        cd /etc/openvpn/easy-rsa
-        sudo ./easyrsa init-pki >/dev/null 2>&1
-        sudo ./easyrsa build-ca nopass >/dev/null 2>&1
-        sudo ./easyrsa gen-dh >/dev/null 2>&1
-        sudo ./easyrsa build-server-full server nopass >/dev/null 2>&1
-        sudo openvpn --genkey --secret /etc/openvpn/ta.key >/dev/null 2>&1
-    fi
+    }
+    [[ ! -e /root/usuarios.db ]] && {
+        echo -e "\033[1;31mError: /root/usuarios.db not found! Creating empty file.\033[0m"
+        sudo touch /root/usuarios.db
+    }
+    [[ ! -e /root/database.db ]] && {
+        echo -e "\033[1;31mError: /root/database.db not found! Creating empty SQLite database.\033[0m"
+        sudo sqlite3 /root/database.db "CREATE TABLE tokens (id INTEGER PRIMARY KEY AUTOINCREMENT, Name TEXT, Key TEXT UNIQUE, Valid INTEGER, Expiration TEXT);"
+    }
 }
 
-# Generate client.ovpn file
+# Read IP from /etc/IP
+IP=$(cat /etc/IP 2>/dev/null)
+cor1='\033[41;1;37m'
+cor2='\033[44;1;37m'
+scor='\033[0m'
+youip="youip:8080" # Hardcoded server IP:port
+
+# Function to generate client.ovpn
 newclient() {
     local username="$1"
     cp /etc/openvpn/client-common.txt ~/$username.ovpn
-    {
-        echo "<ca>"
-        cat /etc/openvpn/easy-rsa/pki/ca.crt 2>/dev/null || echo -e "${cor1}Warning: ca.crt not found!${scor}"
-        echo "</ca>"
-        echo "<cert>"
-        cat /etc/openvpn/easy-rsa/pki/issued/$username.crt 2>/dev/null || echo -e "${cor1}Warning: $username.crt not found!${scor}"
-        echo "</cert>"
-        echo "<key>"
-        cat /etc/openvpn/easy-rsa/pki/private/$username.key 2>/dev/null || echo -e "${cor1}Warning: $username.key not found!${scor}"
-        echo "</key>"
-        echo "<tls-auth>"
-        cat /etc/openvpn/ta.key 2>/dev/null || echo -e "${cor1}Warning: ta.key not found!${scor}"
-        echo "</tls-auth>"
-    } >>~/$username.ovpn
+    echo "<ca>" >>~/$username.ovpn
+    cat /etc/openvpn/easy-rsa/pki/ca.crt >>~/$username.ovpn 2>/dev/null || echo -e "\033[1;31mWarning: ca.crt not found!\033[0m"
+    echo "</ca>" >>~/$username.ovpn
+    echo "<cert>" >>~/$username.ovpn
+    cat /etc/openvpn/easy-rsa/pki/issued/$username.crt >>~/$username.ovpn 2>/dev/null || echo -e "\033[1;31mWarning: $username.crt not found!\033[0m"
+    echo "</cert>" >>~/$username.ovpn
+    echo "<key>" >>~/$username.ovpn
+    cat /etc/openvpn/easy-rsa/pki/private/$username.key >>~/$username.ovpn 2>/dev/null || echo -e "\033[1;31mWarning: $username.key not found!\033[0m"
+    echo "</key>" >>~/$username.ovpn
+    echo "<tls-auth>" >>~/$username.ovpn
+    cat /etc/openvpn/ta.key >>~/$username.ovpn 2>/dev/null || echo -e "\033[1;31mWarning: ta.key not found!\033[0m"
+    echo "</tls-auth>" >>~/$username.ovpn
 }
 
-# Generate OVPN file
+# Function to generate OVPN file
 fun_geraovpn() {
     local username="$1"
-    cd /etc/openvpn/easy-rsa/ || { echo -e "${cor1}Error: Easy-RSA directory not found!${scor}"; exit 1; }
-    ./easyrsa build-client-full "$username" nopass >/dev/null 2>&1 || { echo -e "${cor1}Error: Easy-RSA failed to generate client cert!${scor}"; exit 1; }
-    newclient "$username"
-    if [[ "$respost" =~ ^[sS]$ ]]; then
-        password=$(cat /etc/SSHPlus/Token.txt)
-        [[ -z "$password" ]] && { echo -e "${cor1}Error: Token password not found!${scor}"; exit 1; }
+    if [[ "$respost" = @(s|S) ]]; then
+        cd /etc/openvpn/easy-rsa/ 2>/dev/null || { echo -e "\033[1;31mError: Easy-RSA directory not found!\033[0m"; return 1; }
+        ./easyrsa build-client-full "$username" nopass 2>/dev/null || { echo -e "\033[1;31mWarning: Easy-RSA failed to generate client cert!\033[0m"; return 1; }
+        newclient "$username"
         sed -e "s;auth-user-pass;<auth-user-pass>\n$username\n$password\n</auth-user-pass>;g" /root/$username.ovpn >/root/tmp.ovpn && mv -f /root/tmp.ovpn /root/$username.ovpn
+    else
+        cd /etc/openvpn/easy-rsa/ 2>/dev/null || { echo -e "\033[1;31mError: Easy-RSA directory not found!\033[0m"; return 1; }
+        ./easyrsa build-client-full "$username" nopass 2>/dev/null || { echo -e "\033[1;31mWarning: Easy-RSA failed to generate client cert!\033[0m"; return 1; }
+        newclient "$username"
     fi
 }
 
-# Progress bar
+# Host configuration for OVPN
+[[ -e /etc/openvpn/server.conf ]] && {
+    _Port=$(grep -w 'port' /etc/openvpn/server.conf | awk '{print $2}')
+    hst=$(sed -n '8 p' /etc/openvpn/client-common.txt | awk '{print $4}')
+    rmt=$(sed -n '7 p' /etc/openvpn/client-common.txt)
+    hedr=$(sed -n '8 p' /etc/openvpn/client-common.txt)
+    prxy=$(sed -n '9 p' /etc/openvpn/client-common.txt)
+    rmt2='/SSHPLUS?'
+    rmt3='www.vivo.com.br 8088'
+    prx='200.142.130.104'
+    payload1='#payload "HTTP/1.0 [crlf]Host: m.youtube.com[crlf]CONNECT HTTP/1.0[crlf][crlf]|[crlf]"'
+    payload2='#payload "CONNECT 127.0.0.1:1194[split][crlf] HTTP/1.0 [crlf][crlf]#"'
+    vivo1="portalrecarga.vivo.com.br/recarga"
+    vivo2="portalrecarga.vivo.com.br/controle/"
+    vivo3="navegue.vivo.com.br/pre/"
+    vivo4="navegue.vivo.com.br/controle/"
+    vivo5="www.vivo.com.br"
+    oi="d1n212ccp6ldpw.cloudfront.net"
+    bypass="net_gateway"
+    cert01="/etc/openvpn/client-common.txt"
+    if [[ "$hst" == "$vivo1" ]]; then
+        Host="Vivo Recharge"
+    elif [[ "$hst" == "$vivo2" ]]; then
+        Host="Vivo Control Recharge"
+    elif [[ "$hst" == "$vivo3" ]]; then
+        Host="Vivo Navigate"
+    elif [[ "$hst" == "$vivo4" ]]; then
+        Host="Vivo Control Navigate"
+    elif [[ "$hst" == "$IP:$_Port" ]]; then
+        Host="Vivo MMS"
+    elif [[ "$hst" == "$oi" ]]; then
+        Host="Oi"
+    elif [[ "$hst" == "$bypass" ]]; then
+        Host="Bypass Mode"
+    elif [[ "$hedr" == "$payload1" ]]; then
+        Host="OPEN SOCKS"
+    elif [[ "$hedr" == "$payload2" ]]; then
+        Host="OPEN SQUID"
+    else
+        Host="Custom"
+    fi
+}
+
+# Progress bar function
 fun_bar() {
-    local cmd="$1"
+    comando[0]="$1"
+    comando[1]="$2"
     (
-        $cmd >/dev/null 2>&1
+        [[ -e $HOME/fim ]] && rm $HOME/fim
+        ${comando[0]} >/dev/null 2>&1
+        ${comando[1]} >/dev/null 2>&1
         touch $HOME/fim
     ) >/dev/null 2>&1 &
     tput civis
     echo -ne "\033[1;33mPLEASE WAIT \033[1;37m- \033[1;33m["
-    while [[ ! -e $HOME/fim ]]; do
+    while true; do
         for ((i = 0; i < 18; i++)); do
             echo -ne "\033[1;31m#"
-            sleep 0.1
+            sleep 0.1s
         done
+        [[ -e $HOME/fim ]] && rm $HOME/fim && break
         echo -e "\033[1;33m]"
+        sleep 1s
         tput cuu1
         tput dl1
         echo -ne "\033[1;33mPLEASE WAIT \033[1;37m- \033[1;33m["
     done
-    rm $HOME/fim
     echo -e "\033[1;33m]\033[1;37m -\033[1;32m OK !\033[1;37m"
     tput cnorm
 }
 
-# Host configuration
-configure_hosts() {
-    local hst="portalrecarga.vivo.com.br/recarga"
-    local vivo1="portalrecarga.vivo.com.br/recarga"
-    local vivo2="portalrecarga.vivo.com.br/controle/"
-    local vivo3="navegue.vivo.com.br/pre/"
-    local vivo4="navegue.vivo.com.br/controle/"
-    local vivo5="www.vivo.com.br"
-    local oi="d1n212ccp6ldpw.cloudfront.net"
-    local bypass="net_gateway"
-    local payload1='#payload "HTTP/1.0 [crlf]Host: m.youtube.com[crlf]CONNECT HTTP/1.0[crlf][crlf]|[crlf]"'
-    local payload2='#payload "CONNECT 127.0.0.1:1194[split][crlf] HTTP/1.0 [crlf][crlf]#"'
-    local cert01="/etc/openvpn/client-common.txt"
-
-    case "$hst" in
-        "$vivo1") Host="Vivo Recharge" ;;
-        "$vivo2") Host="Vivo Control Recharge" ;;
-        "$vivo3") Host="Vivo Navigate" ;;
-        "$vivo4") Host="Vivo Control Navigate" ;;
-        "$vivo5") Host="Vivo MMS" ;;
-        "$oi") Host="Oi" ;;
-        "$bypass") Host="Bypass Mode" ;;
-        "$payload1") Host="OPEN SOCKS" ;;
-        "$payload2") Host="OPEN SQUID" ;;
-        *) Host="Custom" ;;
-    esac
-}
-
-# You-server Token ADD
-fun_youip_token_add() {
-    clear
-    tput setaf 7
-    tput setab 4
-    tput bold
-    printf '%30s%s%-15s\n' "You-server Token ADD"
-    tput sgr0
-    echo ""
-    echo -ne "\033[1;32mEnter Token Name: \033[1;37m "
-    read username
-    [[ -z "$username" ]] && { echo -e "\n${cor1}Token name cannot be empty!${scor}\n"; sleep 2; return; }
-    [[ "$(grep -wc "$username" /etc/passwd)" != "0" ]] && { echo -e "\n${cor1}Token already exists!${scor}\n"; sleep 2; return; }
-    [[ ! "$username" =~ ^[a-zA-Z0-9]+$ ]] && { echo -e "\n${cor1}Invalid token name! Use letters and numbers only!${scor}\n"; sleep 2; return; }
-    [[ ${#username} -lt 2 ]] && { echo -e "\n${cor1}Token name too short! Use at least 2 characters!${scor}\n"; sleep 2; return; }
-    
-    echo -ne "\033[1;32mEnter Display Name: \033[1;37m "
-    read display_name
-    [[ -z "$display_name" ]] && { echo -e "\n${cor1}Display name cannot be empty!${scor}\n"; sleep 2; return; }
-    
-    echo -ne "\033[1;32mDays to expire: \033[1;37m "
-    read dias
-    [[ ! "$dias" =~ ^[0-9]+$ ]] && { echo -e "\n${cor1}Invalid number of days!${scor}\n"; sleep 2; return; }
-    [[ $dias -lt 1 ]] && { echo -e "\n${cor1}Number of days must be greater than zero!${scor}\n"; sleep 2; return; }
-    
-    echo -ne "\033[1;32mConnection limit: \033[1;37m "
-    read sshlimiter
-    [[ ! "$sshlimiter" =~ ^[0-9]+$ ]] && { echo -e "\n${cor1}Invalid connection limit!${scor}\n"; sleep 2; return; }
-    [[ $sshlimiter -lt 1 ]] && { echo -e "\n${cor1}Connection limit must be greater than zero!${scor}\n"; sleep 2; return; }
-    
-    echo -ne "\033[1;32mInclude password in OVPN? [y/n]: \033[1;37m "
-    read respost
-    
-    password=$(cat /etc/SSHPlus/Token.txt)
-    [[ -z "$password" ]] && { echo -e "\n${cor1}Error: Token password not found!${scor}\n"; sleep 2; return; }
-    
-    final=$(date "+%Y-%m-%d" -d "+$dias days")
-    gui=$(date "+%d/%m/%Y" -d "+$dias days")
-    pass=$(perl -e 'print crypt($ARGV[0], "password")' "$password")
-    
-    useradd -e "$final" -M -s /bin/false -p "$pass" "$username" >/dev/null 2>&1
-    echo "$password" >/etc/SSHPlus/senha/$username
-    echo "$username $sshlimiter" >>/root/usuarios.db
-    
-    fun_bar "fun_geraovpn \"$username\""
-    
-    curl -X POST "$SERVER_URL" -H "Content-Type: application/json" -d "{\"Name\":\"$display_name\",\"Key\":\"$username\",\"Valid\":\"$dias\",\"Expiration\":\"$final\"}" >/dev/null 2>&1
-    if [[ $? -eq 0 ]]; then
-        echo -e "\n\033[1;32mToken created and synced with server!\033[0m"
-    else
-        echo -e "\n\033[1;31mFailed to sync token with server!${scor}\n"
-    fi
-    
-    clear
-    echo -e "\E[44;1;37m       PPHDEV ACCOUNT CREATED!      \E[0m"
-    echo -e "\n\033[1;32mIP: \033[1;37m$IP"
-    echo -e "\033[1;32mName: \033[1;37m$display_name"
-    echo -e "\033[1;32mToken: \033[1;37m$username"
-    echo -e "\033[1;32mExpires on: \033[1;37m$gui"
-    echo -e "\033[1;32mConnection limit: \033[1;37m$sshlimiter"
-    echo ""
-    echo -e "\033[1;33mPress ENTER to return to MENU!\033[0m"
-    read -r
-}
-
-# Rename token
-fun_rename_token() {
-    clear
-    tput setaf 7
-    tput setab 4
-    tput bold
-    printf '%30s%s%-15s\n' "Rename PPHDEV Token"
-    tput sgr0
-    echo ""
-    echo -ne "\033[1;32mCurrent Token Name: \033[1;37m "
-    read old_username
-    [[ -z "$old_username" ]] && { echo -e "\n${cor1}Token name cannot be empty!${scor}\n"; sleep 2; return; }
-    [[ "$(grep -wc "$old_username" /etc/passwd)" == "0" ]] && { echo -e "\n${cor1}Token does not exist!${scor}\n"; sleep 2; return; }
-    
-    echo -ne "\033[1;32mNew Token Name: \033[1;37m "
-    read new_username
-    [[ -z "$new_username" ]] && { echo -e "\n${cor1}New token name cannot be empty!${scor}\n"; sleep 2; return; }
-    [[ "$(grep -wc "$new_username" /etc/passwd)" != "0" ]] && { echo -e "\n${cor1}New token name already exists!${scor}\n"; sleep 2; return; }
-    [[ ! "$new_username" =~ ^[a-zA-Z0-9]+$ ]] && { echo -e "\n${cor1}Invalid new token name! Use letters and numbers only!${scor}\n"; sleep 2; return; }
-    
-    echo -ne "\033[1;32mNew Display Name: \033[1;37m "
-    read new_display_name
-    [[ -z "$new_display_name" ]] && { echo -e "\n${cor1}New display name cannot be empty!${scor}\n"; sleep 2; return; }
-    
-    sed -i "s/^$old_username:/$new_username:/" /etc/passwd
-    sed -i "s/^$old_username /$new_username /" /root/usuarios.db
-    mv /etc/SSHPlus/senha/$old_username /etc/SSHPlus/senha/$new_username
-    rm -f /root/$old_username.ovpn /root/$old_username.zip
-    username="$new_username"
-    fun_bar "fun_geraovpn \"$username\""
-    
-    curl -X PUT "$SERVER_URL/$old_username" -H "Content-Type: application/json" -d "{\"Name\":\"$new_display_name\",\"Key\":\"$new_username\"}" >/dev/null 2>&1
-    if [[ $? -eq 0 ]]; then
-        echo -e "\n\033[1;32mToken renamed to $new_username (Name: $new_display_name) and synced with server!\033[0m"
-    else
-        echo -e "\n\033[1;31mFailed to sync renamed token with server!${scor}\n"
-    fi
-    echo ""
-    echo -e "\033[1;33mPress ENTER to return to MENU!\033[0m"
-    read -r
-}
-
-# Delete token
-fun_delete_token() {
-    clear
-    tput setaf 7
-    tput setab 4
-    tput bold
-    printf '%30s%s%-15s\n' "Delete PPHDEV Token"
-    tput sgr0
-    echo ""
-    echo -ne "\033[1;32mToken Name to Delete: \033[1;37m "
-    read username
-    [[ -z "$username" ]] && { echo -e "\n${cor1}Token name cannot be empty!${scor}\n"; sleep 2; return; }
-    [[ "$(grep -wc "$username" /etc/passwd)" == "0" ]] && { echo -e "\n${cor1}Token does not exist!${scor}\n"; sleep 2; return; }
-    
-    echo -ne "\033[1;32mConfirm deletion? [y/n]: \033[1;37m "
-    read confirm
-    [[ ! "$confirm" =~ ^[yY]$ ]] && { echo -e "\n\033[1;31mDeletion cancelled!${scor}\n"; sleep 2; return; }
-    
-    curl -X DELETE "$SERVER_URL/$username" >/dev/null 2>&1
-    if [[ $? -eq 0 ]]; then
-        userdel -r "$username" >/dev/null 2>&1
-        sed -i "/^$username /d" /root/usuarios.db
-        rm -f /etc/SSHPlus/senha/$username
-        rm -f /root/$username.ovpn /root/$username.zip
-        echo -e "\n\033[1;32mToken $username deleted successfully!\033[0m"
-    else
-        echo -e "\n\033[1;31mFailed to delete token from server!${scor}\n"
-    fi
-    echo ""
-    echo -e "\033[1;33mPress ENTER to return to MENU!\033[0m"
-    read -r
-}
-
-# Edit OVPN host
+# Function to edit OVPN host
 fun_edithost() {
     clear
     echo -e "\E[44;1;37m          CHANGE OVPN HOST            \E[0m"
@@ -324,125 +197,360 @@ fun_edithost() {
     echo -e "\033[1;31m[\033[1;36m8\033[1;31m] \033[1;33mEDIT MANUALLY"
     echo -e "\033[1;31m[\033[1;36m0\033[1;31m] \033[1;33mRETURN"
     echo ""
-    echo -ne "\033[1;32mEnter Token Name for OVPN: \033[1;37m "
-    read username
-    [[ -z "$username" ]] && { echo -e "\n${cor1}Token name cannot be empty!${scor}\n"; sleep 2; fun_edithost; return; }
-    [[ "$(grep -wc "$username" /etc/passwd)" == "0" ]] && { echo -e "\n${cor1}Token does not exist!${scor}\n"; sleep 2; fun_edithost; return; }
-    
     echo -ne "\033[1;32mWHICH HOST TO USE? \033[1;37m "
     read respo
-    [[ -z "$respo" ]] && { echo -e "\n\033[1;31mInvalid option!${scor}\n"; sleep 2; fun_edithost; return; }
-    cert01="/etc/openvpn/client-common.txt"
+    [[ -z "$respo" ]] && {
+        echo -e "\n\033[1;31mInvalid option!\033[0m"
+        sleep 2
+        fun_edithost
+    }
     case $respo in
         1)
             echo -e "\n\033[1;32mCHANGING HOST!\033[0m\n"
             fun_althost() {
                 sed -i "7,9d" $cert01
-                sed -i "7i\remote $IP $PORT\nhttp-proxy-option CUSTOM-HEADER Host portalrecarga.vivo.com.br/recarga\nhttp-proxy $IP 80" $cert01
+                sleep 1
+                sed -i "7i\remote $rmt2 $_Port\nhttp-proxy-option CUSTOM-HEADER Host $vivo1\nhttp-proxy $IP 80" $cert01
             }
             fun_bar 'fun_althost'
             echo -e "\n\033[1;32mHOST CHANGED SUCCESSFULLY!\033[0m"
             fun_geraovpn "$username"
+            sleep 1.5
             ;;
         2)
             echo -e "\n\033[1;32mCHANGING HOST!\033[0m\n"
             fun_althost2() {
                 sed -i "7,9d" $cert01
-                sed -i "7i\remote $IP $PORT\nhttp-proxy-option CUSTOM-HEADER Host navegue.vivo.com.br/pre/\nhttp-proxy $IP 80" $cert01
+                sleep 1
+                sed -i "7i\remote $rmt2 $_Port\nhttp-proxy-option CUSTOM-HEADER Host $vivo3\nhttp-proxy $IP 80" $cert01
             }
             fun_bar 'fun_althost2'
             echo -e "\n\033[1;32mHOST CHANGED SUCCESSFULLY!\033[0m"
             fun_geraovpn "$username"
+            sleep 1.5
             ;;
         3)
             echo -e "\n\033[1;32mCHANGING HOST!\033[0m\n"
             fun_althostpay1() {
                 sed -i "7,9d" $cert01
-                sed -i "7i\remote $IP $PORT\n#payload \"HTTP/1.0 [crlf]Host: m.youtube.com[crlf]CONNECT HTTP/1.0[crlf][crlf]|[crlf]\"\nhttp-proxy $IP 8080" $cert01
+                sleep 1
+                sed -i "7i\remote $rmt2 $_Port\n$payload1\nhttp-proxy $IP 8080" $cert01
             }
             fun_bar 'fun_althostpay1'
             echo -e "\n\033[1;32mHOST CHANGED SUCCESSFULLY!\033[0m"
             fun_geraovpn "$username"
+            sleep 1.5
             ;;
         4)
             echo -e "\n\033[1;32mCHANGING HOST!\033[0m\n"
             fun_althostpay2() {
                 sed -i "7,9d" $cert01
-                sed -i "7i\remote $IP $PORT\n#payload \"CONNECT 127.0.0.1:1194[split][crlf] HTTP/1.0 [crlf][crlf]#\"\nhttp-proxy $IP 80" $cert01
+                sleep 1
+                sed -i "7i\remote $rmt2 $_Port\n$payload2\nhttp-proxy $IP 80" $cert01
             }
             fun_bar 'fun_althostpay2'
             echo -e "\n\033[1;32mHOST CHANGED SUCCESSFULLY!\033[0m"
             fun_geraovpn "$username"
+            sleep 1.5
             ;;
         5)
             echo -e "\n\033[1;32mCHANGING HOST!\033[0m\n"
             fun_althost5() {
                 sed -i "7,9d" $cert01
-                sed -i "7i\remote www.vivo.com.br 8088\nhttp-proxy-option CUSTOM-HEADER Host navegue.vivo.com.br/pre/\nhttp-proxy 200.142.130.104 80" $cert01
+                sleep 1
+                sed -i "7i\remote $rmt3\nhttp-proxy-option CUSTOM-HEADER Host $vivo3\nhttp-proxy $prx:$_Port" $cert01
             }
             fun_bar 'fun_althost5'
             echo -e "\n\033[1;32mHOST CHANGED SUCCESSFULLY!\033[0m"
             fun_geraovpn "$username"
+            sleep 1.5
             ;;
         6)
             echo -e "\n\033[1;32mCHANGING HOST!\033[0m\n"
             fun_althost6() {
                 sed -i "7,9d" $cert01
-                sed -i "7i\remote $IP $PORT\nroute $IP 255.255.255.255 net_gateway\nhttp-proxy 127.0.0.1 8989" $cert01
+                sleep 1
+                sed -i "7i\remote $IP $_Port\nroute $IP 255.255.255.255 net_gateway\nhttp-proxy 127.0.0.1 8989" $cert01
             }
             fun_bar 'fun_althost6'
             echo -e "\n\033[1;32mHOST CHANGED SUCCESSFULLY!\033[0m"
             fun_geraovpn "$username"
+            sleep 1.5
             ;;
         7)
-            [[ ! -e "/root/$username.ovpn" ]] && fun_geraovpn "$username"
+            [[ ! -e "$HOME/$username.ovpn" ]] && fun_geraovpn "$username"
             echo -e "\n\033[1;32mCHANGING HOST!\033[0m\n"
             fun_packhost() {
-                mkdir -p /root/OVPN
-                local ovpn="/root/$username.ovpn"
-                sed -i "7,9d" $ovpn
-                sed -i "7i\remote $IP $PORT\nhttp-proxy-option CUSTOM-HEADER Host portalrecarga.vivo.com.br/recarga\nhttp-proxy $IP 80" $ovpn
-                cp $ovpn /root/OVPN/$username-vivo1.ovpn
-                sed -i "7,9d" $ovpn
-                sed -i "7i\remote $IP $PORT\nhttp-proxy-option CUSTOM-HEADER Host navegue.vivo.com.br/pre/\nhttp-proxy $IP 80" $ovpn
-                cp $ovpn /root/OVPN/$username-vivo2.ovpn
-                sed -i "7,9d" $ovpn
-                sed -i "7i\remote www.vivo.com.br 8088\nhttp-proxy-option CUSTOM-HEADER Host navegue.vivo.com.br/pre/\nhttp-proxy 200.142.130.104 80" $ovpn
-                cp $ovpn /root/OVPN/$username-vivo3.ovpn
-                sed -i "7,9d" $ovpn
-                sed -i "7i\remote $IP $PORT\nroute $IP 255.255.255.255 net_gateway\nhttp-proxy 127.0.0.1 8989" $ovpn
-                cp $ovpn /root/OVPN/$username-bypass.ovpn
-                sed -i "7,9d" $ovpn
-                sed -i "7i\remote $IP $PORT\n#payload \"HTTP/1.0 [crlf]Host: m.youtube.com[crlf]CONNECT HTTP/1.0[crlf][crlf]|[crlf]\"\nhttp-proxy $IP 8080" $ovpn
-                cp $ovpn /root/OVPN/$username-socks.ovpn
-                sed -i "7,9d" $ovpn
-                sed -i "7i\remote $IP $PORT\n#payload \"CONNECT 127.0.0.1:1194[split][crlf] HTTP/1.0 [crlf][crlf]#\"\nhttp-proxy $IP 80" $ovpn
-                cp $ovpn /root/OVPN/$username-squid.ovpn
-                cd /root/OVPN && zip $username.zip *.ovpn >/dev/null 2>&1 && cp $username.zip /root/$username.zip
-                rm -rf /root/OVPN
+                [[ ! -d "$HOME/OVPN" ]] && mkdir $HOME/OVPN
+                sed -i "7,9d" $HOME/$username.ovpn
+                sleep 0.5
+                sed -i "7i\remote $rmt2 $_Port\nhttp-proxy-option CUSTOM-HEADER Host $vivo1\nhttp-proxy $IP 80" $HOME/$username.ovpn
+                cp $HOME/$username.ovpn /root/OVPN/$username-vivo1.ovpn
+                sed -i "7,9d" $HOME/$username.ovpn
+                sleep 0.5
+                sed -i "7i\remote $rmt2 $_Port\nhttp-proxy-option CUSTOM-HEADER Host $vivo3\nhttp-proxy $IP 80" $HOME/$username.ovpn
+                cp $HOME/$username.ovpn /root/OVPN/$username-vivo2.ovpn
+                sed -i "7,9d" $HOME/$username.ovpn
+                sleep 0.5
+                sed -i "7i\remote $rmt3\nhttp-proxy-option CUSTOM-HEADER Host $IP:$_Port\nhttp-proxy $prx 80" $HOME/$username.ovpn
+                cp $HOME/$username.ovpn /root/OVPN/$username-vivo3.ovpn
+                sed -i "7,9d" $HOME/$username.ovpn
+                sleep 0.5
+                sed -i "7i\remote $IP $_Port\nroute $IP 255.255.255.255 net_gateway\nhttp-proxy 127.0.0.1 8989" $HOME/$username.ovpn
+                cp $HOME/$username.ovpn /root/OVPN/$username-bypass.ovpn
+                sed -i "7,9d" $HOME/$username.ovpn
+                sleep 0.5
+                sed -i "7i\remote $rmt2 $_Port\n$payload1\nhttp-proxy $IP 8080" $HOME/$username.ovpn
+                cp $HOME/$username.ovpn /root/OVPN/$username-socks.ovpn
+                sed -i "7,9d" $HOME/$username.ovpn
+                sleep 0.5
+                sed -i "7i\remote $rmt2 $_Port\n$payload2\nhttp-proxy $IP 80" $HOME/$username.ovpn
+                cp $HOME/$username.ovpn /root/OVPN/$username-squid.ovpn
+                cd $HOME/OVPN && zip $username.zip *.ovpn >/dev/null 2>&1 && cp $username.zip $HOME/$username.zip
+                cd $HOME && rm -rf /root/OVPN >/dev/null 2>&1
             }
             fun_bar 'fun_packhost'
             echo -e "\n\033[1;32mHOST CHANGED SUCCESSFULLY!\033[0m"
+            sleep 1.5
             ;;
         8)
-            echo -e "\n\033[1;32mEDITING OVPN FILE!\033[0m"
+            echo ""
+            echo -e "\033[1;32mEDITING OVPN FILE!\033[0m"
+            echo ""
             echo -e "\033[1;31mATTENTION!\033[0m"
             echo -e "\033[1;33mTO SAVE, USE \033[1;32mCtrl + X, then Y\033[0m"
             sleep 4
+            clear
             nano /etc/openvpn/client-common.txt
-            echo -e "\n\033[1;32mEDITED SUCCESSFULLY!\033[0m"
+            echo ""
+            echo -e "\033[1;32mEDITED SUCCESSFULLY!\033[0m"
             fun_geraovpn "$username"
+            sleep 1.5
             ;;
         0)
-            echo -e "\n\033[1;31mReturning...\033[0m"
+            echo ""
+            echo -e "\033[1;31mReturning...\033[0m"
             sleep 2
             ;;
         *)
-            echo -e "\n\033[1;31mInvalid option!${scor}\n"
+            echo ""
+            echo -e "\033[1;31mInvalid option!\033[0m"
             sleep 2
             fun_edithost
             ;;
     esac
+    echo ""
+    echo -e "\033[1;33mPress ENTER to return to MENU!\033[0m"
+    read -r
+}
+
+# Function to create SSH token
+fun_usertoken() {
+    clear
+    tput setaf 7
+    tput setab 4
+    tput bold
+    printf '%30s%s%-15s\n' "Create PPHDEV Token"
+    tput sgr0
+    echo ""
+    echo -ne "\033[1;32mEnter Token Name: \033[1;37m "
+    read username
+    [[ -z $username ]] && {
+        echo -e "\n${cor1}Token name cannot be empty!${scor}\n"
+        sleep 2
+        return
+    }
+    [[ "$(grep -wc $username /etc/passwd)" != '0' ]] && {
+        echo -e "\n${cor1}This token already exists. Try another name!${scor}\n"
+        sleep 2
+        return
+    }
+    [[ ${username} != ?(+|-)+([a-zA-Z0-9]) ]] && {
+        echo -e "\n${cor1}Invalid token name! Use only letters and numbers!${scor}\n"
+        sleep 2
+        return
+    }
+    sizemin=$(echo ${#username})
+    [[ $sizemin -lt 2 ]] && {
+        echo -e "\n${cor1}Token name too short! Use at least 2 characters!${scor}\n"
+        sleep 2
+        return
+    }
+    echo -ne "\033[1;32mEnter Display Name: \033[1;37m "
+    read display_name
+    [[ -z $display_name ]] && {
+        echo -e "\n${cor1}Display name cannot be empty!${scor}\n"
+        sleep 2
+        return
+    }
+    echo -ne "\033[1;32mDays to expire: \033[1;37m "
+    read dias
+    [[ -z $dias ]] && {
+        echo -e "\n${cor1}Number of days cannot be empty!${scor}\n"
+        sleep 2
+        return
+    }
+    [[ ${dias} != ?(+|-)+([0-9]) ]] && {
+        echo -e "\n${cor1}Invalid number of days!${scor}\n"
+        sleep 2
+        return
+    }
+    [[ $dias -lt 1 ]] && {
+        echo -e "\n${cor1}Number of days must be greater than zero!${scor}\n"
+        sleep 2
+        return
+    }
+    echo -ne "\033[1;32mConnection limit: \033[1;37m "
+    read sshlimiter
+    [[ -z $sshlimiter ]] && {
+        echo -e "\n${cor1}Connection limit cannot be empty!${scor}\n"
+        sleep 2
+        return
+    }
+    [[ ${sshlimiter} != ?(+|-)+([0-9]) ]] && {
+        echo -e "\n${cor1}Invalid connection limit!${scor}\n"
+        sleep 2
+        return
+    }
+    [[ $sshlimiter -lt 1 ]] && {
+        echo -e "\n${cor1}Connection limit must be greater than zero!${scor}\n"
+        sleep 2
+        return
+    }
+    echo -ne "\033[1;32mInclude password in OVPN? [y/n]: \033[1;37m "
+    read respost
+    password=$(cat /etc/SSHPlus/Token.txt 2>/dev/null)
+    [[ -z "$password" ]] && {
+        echo -e "\n${cor1}Error: /etc/SSHPlus/Token.txt empty or not found!${scor}\n"
+        sleep 2
+        return
+    }
+    final=$(date "+%Y-%m-%d" -d "+$dias days")
+    gui=$(date "+%d/%m/%Y" -d "+$dias days")
+    pass=$(perl -e 'print crypt($ARGV[0], "password")' $password)
+    useradd -e $final -M -s /bin/false -p $pass $username >/dev/null 2>&1
+    echo "$password" >/etc/SSHPlus/senha/$username
+    echo "$username $sshlimiter" >>/root/usuarios.db
+    fun_geraovpn "$username"
+    curl -X POST "http://$youip:8080/pphdev/tokens" -H "Content-Type: application/json" -d "{\"Name\":\"$display_name\",\"Key\":\"$username\",\"Valid\":\"$dias\",\"Expiration\":\"$final\"}" >/dev/null 2>&1
+    if [[ $? -eq 0 ]]; then
+        echo -e "\n\033[1;32mToken created and synced with server!\033[0m"
+    else
+        echo -e "\n\033[1;31mFailed to sync token with server!\033[0m"
+    fi
+    clear
+    echo -e "\E[44;1;37m       PPHDEV ACCOUNT CREATED!      \E[0m"
+    echo -e "\n\033[1;32mIP: \033[1;37m$IP"
+    echo -e "\033[1;32mName: \033[1;37m$display_name"
+    echo -e "\033[1;32mToken: \033[1;37m$username"
+    echo -e "\033[1;32mExpires on: \033[1;37m$gui"
+    echo -e "\033[1;32mConnection limit: \033[1;37m$sshlimiter"
+    echo ""
+    echo -e "\033[1;33mPress ENTER to return to MENU!\033[0m"
+    read -r
+}
+
+# Function to rename SSH token
+fun_rename_token() {
+    clear
+    tput setaf 7
+    tput setab 4
+    tput bold
+    printf '%30s%s%-15s\n' "Rename PPHDEV Token"
+    tput sgr0
+    echo ""
+    echo -ne "\033[1;32mCurrent Token Name: \033[1;37m "
+    read old_username
+    [[ -z $old_username ]] && {
+        echo -e "\n${cor1}Token name cannot be empty!${scor}\n"
+        sleep 2
+        return
+    }
+    [[ "$(grep -wc $old_username /etc/passwd)" == '0' ]] && {
+        echo -e "\n${cor1}This token does not exist!${scor}\n"
+        sleep 2
+        return
+    }
+    echo -ne "\033[1;32mNew Token Name: \033[1;37m "
+    read new_username
+    [[ -z $new_username ]] && {
+        echo -e "\n${cor1}New token name cannot be empty!${scor}\n"
+        sleep 2
+        return
+    }
+    [[ "$(grep -wc $new_username /etc/passwd)" != '0' ]] && {
+        echo -e "\n${cor1}This new token name already exists!${scor}\n"
+        sleep 2
+        return
+    }
+    [[ ${new_username} != ?(+|-)+([a-zA-Z0-9]) ]] && {
+        echo -e "\n${cor1}Invalid new token name! Use only letters and numbers!${scor}\n"
+        sleep 2
+        return
+    }
+    echo -ne "\033[1;32mNew Display Name: \033[1;37m "
+    read new_display_name
+    [[ -z $new_display_name ]] && {
+        echo -e "\n${cor1}New display name cannot be empty!${scor}\n"
+        sleep 2
+        return
+    }
+    sed -i "s/^$old_username:/$new_username:/" /etc/passwd
+    sed -i "s/^$old_username /$new_username /" /root/usuarios.db
+    mv /etc/SSHPlus/senha/$old_username /etc/SSHPlus/senha/$new_username
+    rm -f /root/$old_username.ovpn /root/$old_username.zip
+    username=$new_username
+    fun_geraovpn "$username"
+    curl -X PUT "http://$youip:8080/pphdev/tokens/$old_username" -H "Content-Type: application/json" -d "{\"Name\":\"$new_display_name\",\"Key\":\"$new_username\"}" >/dev/null 2>&1
+    if [[ $? -eq 0 ]]; then
+        echo -e "\n\033[1;32mToken renamed to $new_username (Name: $new_display_name) and synced with server!\033[0m"
+    else
+        echo -e "\n\033[1;31mFailed to sync renamed token with server!\033[0m"
+    fi
+    echo ""
+    echo -e "\033[1;33mPress ENTER to return to MENU!\033[0m"
+    read -r
+}
+
+# Function to delete SSH token
+fun_delete_token() {
+    clear
+    tput setaf 7
+    tput setab 4
+    tput bold
+    printf '%30s%s%-15s\n' "Delete PPHDEV Token"
+    tput sgr0
+    echo ""
+    echo -ne "\033[1;32mToken Name to Delete: \033[1;37m "
+    read username
+    [[ -z $username ]] && {
+        echo -e "\n${cor1}Token name cannot be empty!${scor}\n"
+        sleep 2
+        return
+    }
+    [[ "$(grep -wc $username /etc/passwd)" == '0' ]] && {
+        echo -e "\n${cor1}This token does not exist!${scor}\n"
+        sleep 2
+        return
+    }
+    echo -ne "\033[1;32mConfirm deletion? [y/n]: \033[1;37m "
+    read confirm
+    [[ "$confirm" != @(y|Y) ]] && {
+        echo -e "\n\033[1;31mDeletion cancelled!${scor}\n"
+        sleep 2
+        return
+    }
+    curl -X DELETE "http://$youip:8080/pphdev/tokens/$username" >/dev/null 2>&1
+    if [[ $? -eq 0 ]]; then
+        userdel -r $username >/dev/null 2>&1
+        sed -i "/^$username /d" /root/usuarios.db
+        rm -f /etc/SSHPlus/senha/$username
+        rm -f /root/$username.ovpn /root/$username.zip
+        echo -e "\n\033[1;32mToken $username deleted successfully!\033[0m"
+    else
+        echo -e "\n\033[1;31mFailed to delete token from server!\033[0m"
+    fi
+    echo ""
     echo -e "\033[1;33mPress ENTER to return to MENU!\033[0m"
     read -r
 }
@@ -460,24 +568,22 @@ fun_main_menu() {
     echo -e "\033[1;31m[\033[1;36m2\033[1;31m] \033[1;33mRename Token"
     echo -e "\033[1;31m[\033[1;36m3\033[1;31m] \033[1;33mDelete Token"
     echo -e "\033[1;31m[\033[1;36m4\033[1;31m] \033[1;33mChange Host"
-    echo -e "\033[1;31m[\033[1;36m5\033[1;31m] \033[1;33mYou-server Token ADD"
     echo -e "\033[1;31m[\033[1;36m0\033[1;31m] \033[1;33mExit"
     echo ""
     echo -ne "\033[1;32mWhat do you want to do? \033[1;37m "
     read option
     case $option in
-        1) fun_youip_token_add ;;
+        1) fun_usertoken ;;
         2) fun_rename_token ;;
         3) fun_delete_token ;;
-        4) configure_hosts; fun_edithost ;;
-        5) fun_youip_token_add ;;
+        4) fun_edithost ;;
         0) exit 0 ;;
-        *) echo -e "\n\033[1;31mInvalid option!${scor}\n"; sleep 2; fun_main_menu ;;
+        *) echo -e "\n\033[1;31mInvalid option!\033[0m"; sleep 2; fun_main_menu ;;
     esac
 }
 
-# Initialize and run
-update_bashrc
+# Initialize requirements
 init_requirements
-configure_hosts
+
+# Start the main menu
 fun_main_menu
