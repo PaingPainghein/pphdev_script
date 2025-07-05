@@ -1,7 +1,7 @@
 #!/bin/bash
 #============================================================
 # Script: criarusuario
-# Description: Manages SSH and OpenVPN tokens for PPHDEV, optimized for Subscription.java
+# Description: Manages SSH accounts and OpenVPN configurations for PPHDEV
 # Author: @pphdev
 #============================================================
 
@@ -407,7 +407,7 @@ fun_edithost() {
                 sed -i "7i\remote $IP $PORT\nhttp-proxy-option CUSTOM-HEADER Host navegue.vivo.com.br/pre/\nhttp-proxy $IP 80" $ovpn
                 cp $ovpn /root/OVPN/$username-vivo2.ovpn
                 sed -i "7,9d" $ovpn
-                sed -i "7i\remote www.vivo.com.br 8088\nhttp-proxy-option CUSTOM-HEADER Host $IP:$PORT\nhttp-proxy 200.142.130.104 80" $ovpn
+                sed -i "7i\remote www.vivo.com.br 8088\nhttp-proxy-option CUSTOM-HEADER Host navegue.vivo.com.br/pre/\nhttp-proxy 200.142.130.104 80" $ovpn
                 cp $ovpn /root/OVPN/$username-vivo3.ovpn
                 sed -i "7,9d" $ovpn
                 sed -i "7i\remote $IP $PORT\nroute $IP 255.255.255.255 net_gateway\nhttp-proxy 127.0.0.1 8989" $ovpn
